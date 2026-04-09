@@ -1,10 +1,12 @@
 // hollow-core/src/lib.rs
 mod db;
 mod error;
+mod logging;
 mod store;
 
 pub use db::models::FileRecord;
 pub use error::HollowError;
+pub use logging::{LogEntry, LogLevel};
 
 use db::Database;
 use store::FileStore;
@@ -15,6 +17,7 @@ use std::io::{BufReader, Read as _};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::Mutex;
+use tracing::{info, debug};
 use uuid::Uuid;
 
 uniffi::setup_scaffolding!();
@@ -28,7 +31,9 @@ pub struct HollowCore {
 impl HollowCore {
     #[uniffi::constructor]
     pub fn new(db_path: String) -> Result<Self, HollowError> {
+        logging::init_logging();
         let db = Database::open(&db_path)?;
+        info!("HollowCore initialized, db: {}", db_path);
         Ok(HollowCore { db: Mutex::new(db) })
     }
 
@@ -50,6 +55,7 @@ impl HollowCore {
             let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
             if let Some(ino) = inode {
                 if FileStore::inode_exists(&db.conn, ino)? {
+                    debug!("Duplicate skipped: {}", file_path);
                     return Err(HollowError::DuplicateFile(file_path.clone()));
                 }
             }
@@ -60,6 +66,7 @@ impl HollowCore {
                     FileStore::delete_by_path(&db.conn, &file_path)?;
                 }
                 Some(_) => {
+                    debug!("Duplicate skipped: {}", file_path);
                     return Err(HollowError::DuplicateFile(file_path.clone()));
                 }
                 None => {} // path not in DB, proceed
@@ -107,7 +114,10 @@ impl HollowCore {
 
         let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
         match FileStore::insert_file(&db.conn, record.clone()) {
-            Ok(()) => Ok(record),
+            Ok(()) => {
+                info!("Ingested: {} ({} bytes)", record.file_name, record.size_bytes);
+                Ok(record)
+            }
             Err(HollowError::Database(msg)) if msg.contains("UNIQUE constraint") => {
                 Err(HollowError::DuplicateFile(record.current_path))
             }
@@ -118,6 +128,7 @@ impl HollowCore {
     /// Heavy operation: reads entire file in 8KB chunks, computes SHA-256,
     /// updates the DB record. Call this from a background thread.
     pub fn compute_hash(&self, file_id: String) -> Result<String, HollowError> {
+        debug!("Computing full hash for {}", file_id);
         // Get the file record to find its path
         let current_path = {
             let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
@@ -144,6 +155,7 @@ impl HollowCore {
             hasher.update(&buf[..n]);
         }
         let hash = format!("{:x}", hasher.finalize());
+        info!("Hash computed for {}", file_id);
 
         // Update the record in DB
         let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
@@ -187,8 +199,17 @@ impl HollowCore {
     /// Mark a file as missing (deleted from filesystem).
     /// Clears inode so it won't block a new file with the same inode.
     pub fn mark_missing(&self, path: String) -> Result<(), HollowError> {
+        info!("Marked missing: {}", path);
         let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
         FileStore::mark_missing_by_path(&db.conn, &path)
+    }
+
+    pub fn get_logs(&self, since_id: u64) -> Vec<LogEntry> {
+        logging::get_logs_since(since_id)
+    }
+
+    pub fn clear_logs(&self) {
+        logging::clear_log_buffer();
     }
 }
 
