@@ -107,21 +107,33 @@ final class IngestionService {
         }
     }
 
+    private static let ignoredExtensions: Set<String> = [
+        "tmp", "download", "crdownload", "partial"
+    ]
+
     private static func scanInbox(_ inboxURL: URL) -> [URL] {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+        guard let enumerator = FileManager.default.enumerator(
             at: inboxURL,
-            includingPropertiesForKeys: nil,
+            includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else { return [] }
 
-        return contents.filter { url in
+        var result: [URL] = []
+        for case let url as URL in enumerator {
             let name = url.lastPathComponent
-            if name.hasPrefix(".") { return false }
+            if name.hasPrefix(".") {
+                enumerator.skipDescendants()
+                continue
+            }
             let ext = url.pathExtension.lowercased()
-            if ["tmp", "download", "crdownload", "partial"].contains(ext) { return false }
+            if ignoredExtensions.contains(ext) { continue }
             var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return false }
-            return !isDir.boolValue
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir),
+                  !isDir.boolValue else {
+                continue
+            }
+            result.append(url)
         }
+        return result
     }
 }

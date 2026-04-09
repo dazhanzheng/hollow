@@ -114,26 +114,41 @@ final class FileWatcher {
         }
     }
 
+    /// Returns relative paths of all files under watchedURL (recursive).
+    /// Uses relative path as key so files in different subdirectories don't collide.
     private func currentFileNames() -> Set<String> {
-        guard let contents = try? FileManager.default.contentsOfDirectory(
+        guard let enumerator = FileManager.default.enumerator(
             at: watchedURL,
-            includingPropertiesForKeys: nil,
+            includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles]
         ) else {
             return []
         }
 
-        return Set(contents.compactMap { url -> String? in
+        let basePath = watchedURL.path
+        var result: Set<String> = []
+
+        for case let url as URL in enumerator {
             let name = url.lastPathComponent
-            if name.hasPrefix(".") { return nil }
+            if name.hasPrefix(".") {
+                enumerator.skipDescendants()
+                continue
+            }
+
             let ext = url.pathExtension.lowercased()
-            if Self.ignoredExtensions.contains(ext) { return nil }
+            if Self.ignoredExtensions.contains(ext) { continue }
+
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir),
                   !isDir.boolValue else {
-                return nil
+                continue
             }
-            return name
-        })
+
+            // Use relative path as key (e.g. "报税/流水.pdf")
+            let relativePath = String(url.path.dropFirst(basePath.count + 1))
+            result.insert(relativePath)
+        }
+
+        return result
     }
 }
