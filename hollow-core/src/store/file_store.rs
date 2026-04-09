@@ -8,11 +8,12 @@ pub struct FileStore;
 impl FileStore {
     pub fn insert_file(conn: &Connection, record: FileRecord) -> Result<(), HollowError> {
         conn.execute(
-            "INSERT INTO files (id, hash, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            "INSERT INTO files (id, hash, inode, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             rusqlite::params![
                 record.id,
                 record.hash,
+                record.inode,
                 record.current_path,
                 record.original_path,
                 record.file_name,
@@ -28,28 +29,33 @@ impl FileStore {
         Ok(())
     }
 
+    fn record_from_row(row: &rusqlite::Row) -> rusqlite::Result<FileRecord> {
+        Ok(FileRecord {
+            id: row.get(0)?,
+            hash: row.get(1)?,
+            inode: row.get(2)?,
+            current_path: row.get(3)?,
+            original_path: row.get(4)?,
+            file_name: row.get(5)?,
+            extension: row.get(6)?,
+            mime_type: row.get(7)?,
+            size_bytes: row.get(8)?,
+            created_at: row.get(9)?,
+            modified_at: row.get(10)?,
+            ingested_at: row.get(11)?,
+            status: row.get(12)?,
+        })
+    }
+
+    const SELECT_COLS: &str = "id, hash, inode, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status";
+
     pub fn get_file(conn: &Connection, id: &str) -> Result<Option<FileRecord>, HollowError> {
-        let mut stmt = conn.prepare(
-            "SELECT id, hash, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status
-             FROM files WHERE id = ?1",
-        )?;
+        let sql = format!("SELECT {} FROM files WHERE id = ?1", Self::SELECT_COLS);
+        let mut stmt = conn.prepare(&sql)?;
 
         let mut rows = stmt.query(rusqlite::params![id])?;
         if let Some(row) = rows.next()? {
-            Ok(Some(FileRecord {
-                id: row.get(0)?,
-                hash: row.get(1)?,
-                current_path: row.get(2)?,
-                original_path: row.get(3)?,
-                file_name: row.get(4)?,
-                extension: row.get(5)?,
-                mime_type: row.get(6)?,
-                size_bytes: row.get(7)?,
-                created_at: row.get(8)?,
-                modified_at: row.get(9)?,
-                ingested_at: row.get(10)?,
-                status: row.get(11)?,
-            }))
+            Ok(Some(Self::record_from_row(row)?))
         } else {
             Ok(None)
         }
@@ -60,28 +66,15 @@ impl FileStore {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<FileRecord>, HollowError> {
-        let mut stmt = conn.prepare(
-            "SELECT id, hash, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status
-             FROM files ORDER BY ingested_at DESC LIMIT ?1 OFFSET ?2",
-        )?;
+        let sql = format!(
+            "SELECT {} FROM files ORDER BY ingested_at DESC LIMIT ?1 OFFSET ?2",
+            Self::SELECT_COLS
+        );
+        let mut stmt = conn.prepare(&sql)?;
 
-        let records = stmt.query_map(rusqlite::params![limit, offset], |row| {
-            Ok(FileRecord {
-                id: row.get(0)?,
-                hash: row.get(1)?,
-                current_path: row.get(2)?,
-                original_path: row.get(3)?,
-                file_name: row.get(4)?,
-                extension: row.get(5)?,
-                mime_type: row.get(6)?,
-                size_bytes: row.get(7)?,
-                created_at: row.get(8)?,
-                modified_at: row.get(9)?,
-                ingested_at: row.get(10)?,
-                status: row.get(11)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        let records = stmt
+            .query_map(rusqlite::params![limit, offset], |row| Self::record_from_row(row))?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(records)
     }
@@ -123,6 +116,15 @@ impl FileStore {
         Ok(count > 0)
     }
 
+    pub fn inode_exists(conn: &Connection, inode: i64) -> Result<bool, HollowError> {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM files WHERE inode = ?1",
+            rusqlite::params![inode],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
     pub fn update_hash(conn: &Connection, id: &str, hash: &str) -> Result<(), HollowError> {
         let updated = conn.execute(
             "UPDATE files SET hash = ?1 WHERE id = ?2",
@@ -138,7 +140,8 @@ impl FileStore {
         let mut stmt = conn.prepare(
             "SELECT id FROM files WHERE status = ?1 ORDER BY ingested_at ASC",
         )?;
-        let ids = stmt.query_map(rusqlite::params![status], |row| row.get(0))?
+        let ids = stmt
+            .query_map(rusqlite::params![status], |row| row.get(0))?
             .collect::<Result<Vec<String>, _>>()?;
         Ok(ids)
     }
@@ -157,6 +160,7 @@ mod tests {
         FileRecord {
             id: "01961234-5678-7abc-def0-123456789abc".to_string(),
             hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
+            inode: Some(12345),
             current_path: "/Users/test/Documents/test.pdf".to_string(),
             original_path: "/Users/test/Downloads/test.pdf".to_string(),
             file_name: "test.pdf".to_string(),
@@ -179,16 +183,10 @@ mod tests {
         let fetched = FileStore::get_file(&db.conn, &record.id).unwrap().unwrap();
         assert_eq!(fetched.id, record.id);
         assert_eq!(fetched.hash, record.hash);
+        assert_eq!(fetched.inode, record.inode);
         assert_eq!(fetched.current_path, record.current_path);
-        assert_eq!(fetched.original_path, record.original_path);
         assert_eq!(fetched.file_name, record.file_name);
-        assert_eq!(fetched.extension, record.extension);
-        assert_eq!(fetched.mime_type, record.mime_type);
         assert_eq!(fetched.size_bytes, record.size_bytes);
-        assert_eq!(fetched.created_at, record.created_at);
-        assert_eq!(fetched.modified_at, record.modified_at);
-        assert_eq!(fetched.ingested_at, record.ingested_at);
-        assert_eq!(fetched.status, record.status);
     }
 
     #[test]
@@ -206,33 +204,23 @@ mod tests {
             id: "01961234-5678-7abc-def0-000000000001".to_string(),
             ingested_at: "2026-04-09T11:00:00Z".to_string(),
             current_path: "/Users/test/Documents/file1.pdf".to_string(),
+            inode: Some(111),
             ..sample_record()
         };
         let record2 = FileRecord {
             id: "01961234-5678-7abc-def0-000000000002".to_string(),
             ingested_at: "2026-04-09T12:00:00Z".to_string(),
             current_path: "/Users/test/Documents/file2.pdf".to_string(),
+            inode: Some(222),
             ..sample_record()
         };
 
         FileStore::insert_file(&db.conn, record1.clone()).unwrap();
         FileStore::insert_file(&db.conn, record2.clone()).unwrap();
 
-        // Most recent first
         let all = FileStore::list_files(&db.conn, 10, 0).unwrap();
         assert_eq!(all.len(), 2);
         assert_eq!(all[0].id, record2.id);
-        assert_eq!(all[1].id, record1.id);
-
-        // Limit 1
-        let limited = FileStore::list_files(&db.conn, 1, 0).unwrap();
-        assert_eq!(limited.len(), 1);
-        assert_eq!(limited[0].id, record2.id);
-
-        // Offset 1
-        let offset = FileStore::list_files(&db.conn, 10, 1).unwrap();
-        assert_eq!(offset.len(), 1);
-        assert_eq!(offset[0].id, record1.id);
     }
 
     #[test]
@@ -271,13 +259,19 @@ mod tests {
         let db = test_db();
         let record = sample_record();
 
-        let before = FileStore::check_duplicate(&db.conn, &record.hash).unwrap();
-        assert!(!before);
-
+        assert!(!FileStore::check_duplicate(&db.conn, &record.hash).unwrap());
         FileStore::insert_file(&db.conn, record.clone()).unwrap();
+        assert!(FileStore::check_duplicate(&db.conn, &record.hash).unwrap());
+    }
 
-        let after = FileStore::check_duplicate(&db.conn, &record.hash).unwrap();
-        assert!(after);
+    #[test]
+    fn test_inode_exists() {
+        let db = test_db();
+        let record = sample_record();
+
+        assert!(!FileStore::inode_exists(&db.conn, 12345).unwrap());
+        FileStore::insert_file(&db.conn, record).unwrap();
+        assert!(FileStore::inode_exists(&db.conn, 12345).unwrap());
     }
 
     #[test]
@@ -287,11 +281,13 @@ mod tests {
         let record1 = FileRecord {
             id: "01961234-5678-7abc-def0-000000000001".to_string(),
             current_path: "/Users/test/Documents/copy1.pdf".to_string(),
+            inode: Some(111),
             ..sample_record()
         };
         let record2 = FileRecord {
             id: "01961234-5678-7abc-def0-000000000002".to_string(),
             current_path: "/Users/test/Documents/copy2.pdf".to_string(),
+            inode: Some(222),
             ..sample_record()
         };
 

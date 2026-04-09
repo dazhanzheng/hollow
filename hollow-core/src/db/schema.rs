@@ -1,4 +1,4 @@
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 const MIGRATION_V1: &str = "
 CREATE TABLE files (
@@ -49,12 +49,22 @@ CREATE TABLE operations_log (
 CREATE INDEX idx_operations_log_file_time ON operations_log(file_id, performed_at);
 ";
 
+const MIGRATION_V2: &str = "
+ALTER TABLE files ADD COLUMN inode INTEGER;
+CREATE INDEX idx_files_inode ON files(inode);
+";
+
 pub fn migrate(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     let current_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
 
     if current_version < 1 {
         conn.execute_batch(MIGRATION_V1)?;
         conn.pragma_update(None, "user_version", 1)?;
+    }
+
+    if current_version < 2 {
+        conn.execute_batch(MIGRATION_V2)?;
+        conn.pragma_update(None, "user_version", 2)?;
     }
 
     Ok(())

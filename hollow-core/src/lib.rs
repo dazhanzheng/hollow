@@ -12,6 +12,7 @@ use store::FileStore;
 use sha2::{Sha256, Digest};
 use std::fs;
 use std::io::{BufReader, Read as _};
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -39,16 +40,23 @@ impl HollowCore {
             return Err(HollowError::FileNotFound(file_path.clone()));
         }
 
-        // Path-based dedup only (prevents re-scanning the same file)
+        let fs_metadata = fs::metadata(path)
+            .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
+
+        let inode = Some(fs_metadata.ino() as i64);
+
+        // Dedup by inode first (survives rename/move), then by path (fallback)
         {
             let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+            if let Some(ino) = inode {
+                if FileStore::inode_exists(&db.conn, ino)? {
+                    return Err(HollowError::DuplicateFile(file_path.clone()));
+                }
+            }
             if FileStore::path_exists(&db.conn, &file_path)? {
                 return Err(HollowError::DuplicateFile(file_path.clone()));
             }
         }
-
-        let fs_metadata = fs::metadata(path)
-            .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
 
         let file_name = path
             .file_name()
@@ -72,6 +80,7 @@ impl HollowCore {
         let record = FileRecord {
             id: Uuid::now_v7().to_string(),
             hash: String::new(), // computed later by compute_hash
+            inode,
             current_path: file_path.clone(),
             original_path: file_path,
             file_name,
