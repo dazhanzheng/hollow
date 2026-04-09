@@ -17,7 +17,7 @@ final class IngestionService {
         self.watcher = FileWatcher(directory: FileWatcher.inboxURL)
 
         watcher.onNewFiles = { [weak self] urls in
-            self?.handleNewFiles(urls)
+            self?.enqueueFiles(urls)
         }
     }
 
@@ -25,14 +25,20 @@ final class IngestionService {
         watcher.start()
         isWatching = true
 
+        // Everything heavy runs off main thread
         let bridge = self.bridge
+        let inboxURL = FileWatcher.inboxURL
         Task.detached(priority: .utility) { [weak self] in
+            // Count already-ingested files
             let count = bridge.listFiles(limit: UInt32.max, offset: 0).count
             await MainActor.run { [weak self] in
                 self?.totalIngested = count
             }
-            await MainActor.run { [weak self] in
-                self?.performStartupScan()
+
+            // Scan inbox for files not yet ingested
+            let files = Self.scanInbox(inboxURL)
+            if !files.isEmpty {
+                self?.enqueueFiles(files)
             }
         }
     }
@@ -42,41 +48,21 @@ final class IngestionService {
         isWatching = false
     }
 
-    private func performStartupScan() {
-        let inboxURL = FileWatcher.inboxURL
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: inboxURL,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        ) else { return }
+    // Serial queue ensures only one ingestion batch runs at a time
+    private let ingestionQueue = DispatchQueue(label: "com.syncpulse.hollow.ingestion")
 
-        let files = contents.filter { url in
-            let name = url.lastPathComponent
-            if name.hasPrefix(".") { return false }
-            let ext = url.pathExtension.lowercased()
-            if ["tmp", "download", "crdownload", "partial"].contains(ext) { return false }
-            var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return false }
-            return !isDir.boolValue
-        }
-
-        if !files.isEmpty {
-            handleNewFiles(files)
-        }
-    }
-
-    private func handleNewFiles(_ urls: [URL]) {
+    private func enqueueFiles(_ urls: [URL]) {
         let bridge = self.bridge
         let total = urls.count
-        Task.detached(priority: .utility) { [weak self] in
+        ingestionQueue.async { [weak self] in
             for (index, url) in urls.enumerated() {
-                await MainActor.run { [weak self] in
+                DispatchQueue.main.async { [weak self] in
                     self?.processingProgress = "Processing \(index + 1)/\(total)..."
                 }
 
                 let result = bridge.ingestFile(path: url.path)
 
-                await MainActor.run { [weak self] in
+                DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     switch result {
                     case .success(let record):
@@ -93,9 +79,27 @@ final class IngestionService {
                     }
                 }
             }
-            await MainActor.run { [weak self] in
+            DispatchQueue.main.async { [weak self] in
                 self?.processingProgress = nil
             }
+        }
+    }
+
+    private static func scanInbox(_ inboxURL: URL) -> [URL] {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: inboxURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        return contents.filter { url in
+            let name = url.lastPathComponent
+            if name.hasPrefix(".") { return false }
+            let ext = url.pathExtension.lowercased()
+            if ["tmp", "download", "crdownload", "partial"].contains(ext) { return false }
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return false }
+            return !isDir.boolValue
         }
     }
 }

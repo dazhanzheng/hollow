@@ -101,8 +101,13 @@ impl HollowCore {
         };
 
         let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
-        FileStore::insert_file(&db.conn, record.clone())?;
-        Ok(record)
+        match FileStore::insert_file(&db.conn, record.clone()) {
+            Ok(()) => Ok(record),
+            Err(HollowError::Database(msg)) if msg.contains("UNIQUE constraint") => {
+                Err(HollowError::DuplicateFile(record.current_path))
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub fn get_file(&self, id: String) -> Result<Option<FileRecord>, HollowError> {
