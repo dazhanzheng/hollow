@@ -263,6 +263,11 @@ uint64_t uniffi_hollow_core_fn_constructor_hollowcore_new(RustBuffer db_path, Ru
 int8_t uniffi_hollow_core_fn_method_hollowcore_check_duplicate(uint64_t ptr, RustBuffer hash, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_CLEAR_LOGS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_CLEAR_LOGS
+void uniffi_hollow_core_fn_method_hollowcore_clear_logs(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_COMPUTE_HASH
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_COMPUTE_HASH
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_compute_hash(uint64_t ptr, RustBuffer file_id, RustCallStatus *_Nonnull out_status
@@ -271,6 +276,11 @@ RustBuffer uniffi_hollow_core_fn_method_hollowcore_compute_hash(uint64_t ptr, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_FILE
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_FILE
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_get_file(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_LOGS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_LOGS
+RustBuffer uniffi_hollow_core_fn_method_hollowcore_get_logs(uint64_t ptr, uint64_t since_id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_PENDING_IDS
@@ -569,6 +579,12 @@ uint16_t uniffi_hollow_core_checksum_method_hollowcore_check_duplicate(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_CLEAR_LOGS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_CLEAR_LOGS
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_clear_logs(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_COMPUTE_HASH
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_COMPUTE_HASH
 uint16_t uniffi_hollow_core_checksum_method_hollowcore_compute_hash(void
@@ -578,6 +594,12 @@ uint16_t uniffi_hollow_core_checksum_method_hollowcore_compute_hash(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_FILE
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_FILE
 uint16_t uniffi_hollow_core_checksum_method_hollowcore_get_file(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_LOGS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_LOGS
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_get_logs(void
     
 );
 #endif

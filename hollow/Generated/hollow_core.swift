@@ -435,6 +435,22 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
     typealias FfiType = Int64
     typealias SwiftType = Int64
@@ -520,6 +536,8 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
     
     func checkDuplicate(hash: String) throws  -> Bool
     
+    func clearLogs() 
+    
     /**
      * Heavy operation: reads entire file in 8KB chunks, computes SHA-256,
      * updates the DB record. Call this from a background thread.
@@ -527,6 +545,8 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
     func computeHash(fileId: String) throws  -> String
     
     func getFile(id: String) throws  -> FileRecord?
+    
+    func getLogs(sinceId: UInt64)  -> [LogEntry]
     
     /**
      * Returns IDs of all files with status="pending" (not yet fully processed).
@@ -625,6 +645,13 @@ open func checkDuplicate(hash: String)throws  -> Bool  {
 })
 }
     
+open func clearLogs()  {try! rustCall() {
+    uniffi_hollow_core_fn_method_hollowcore_clear_logs(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+    
     /**
      * Heavy operation: reads entire file in 8KB chunks, computes SHA-256,
      * updates the DB record. Call this from a background thread.
@@ -643,6 +670,15 @@ open func getFile(id: String)throws  -> FileRecord?  {
     uniffi_hollow_core_fn_method_hollowcore_get_file(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),$0
+    )
+})
+}
+    
+open func getLogs(sinceId: UInt64) -> [LogEntry]  {
+    return try!  FfiConverterSequenceTypeLogEntry.lift(try! rustCall() {
+    uniffi_hollow_core_fn_method_hollowcore_get_logs(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(sinceId),$0
     )
 })
 }
@@ -863,6 +899,72 @@ public func FfiConverterTypeFileRecord_lower(_ value: FileRecord) -> RustBuffer 
 }
 
 
+public struct LogEntry: Equatable, Hashable {
+    public var id: UInt64
+    public var timestamp: String
+    public var level: LogLevel
+    public var target: String
+    public var message: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: UInt64, timestamp: String, level: LogLevel, target: String, message: String) {
+        self.id = id
+        self.timestamp = timestamp
+        self.level = level
+        self.target = target
+        self.message = message
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LogEntry: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLogEntry: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LogEntry {
+        return
+            try LogEntry(
+                id: FfiConverterUInt64.read(from: &buf), 
+                timestamp: FfiConverterString.read(from: &buf), 
+                level: FfiConverterTypeLogLevel.read(from: &buf), 
+                target: FfiConverterString.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LogEntry, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.timestamp, into: &buf)
+        FfiConverterTypeLogLevel.write(value.level, into: &buf)
+        FfiConverterString.write(value.target, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogEntry_lift(_ buf: RustBuffer) throws -> LogEntry {
+    return try FfiConverterTypeLogEntry.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogEntry_lower(_ value: LogEntry) -> RustBuffer {
+    return FfiConverterTypeLogEntry.lower(value)
+}
+
+
 public enum HollowError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
@@ -965,6 +1067,87 @@ public func FfiConverterTypeHollowError_lift(_ buf: RustBuffer) throws -> Hollow
 public func FfiConverterTypeHollowError_lower(_ value: HollowError) -> RustBuffer {
     return FfiConverterTypeHollowError.lower(value)
 }
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public enum LogLevel: Equatable, Hashable {
+    
+    case debug
+    case info
+    case warn
+    case error
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LogLevel: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLogLevel: FfiConverterRustBuffer {
+    typealias SwiftType = LogLevel
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LogLevel {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .debug
+        
+        case 2: return .info
+        
+        case 3: return .warn
+        
+        case 4: return .error
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LogLevel, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .debug:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .info:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .warn:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .error:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogLevel_lift(_ buf: RustBuffer) throws -> LogLevel {
+    return try FfiConverterTypeLogLevel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLogLevel_lower(_ value: LogLevel) -> RustBuffer {
+    return FfiConverterTypeLogLevel.lower(value)
+}
+
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -1088,6 +1271,31 @@ fileprivate struct FfiConverterSequenceTypeFileRecord: FfiConverterRustBuffer {
     }
 }
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLogEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [LogEntry]
+
+    public static func write(_ value: [LogEntry], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLogEntry.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LogEntry] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LogEntry]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLogEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
+
 private enum InitializationResult {
     case ok
     case contractVersionMismatch
@@ -1106,10 +1314,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_hollow_core_checksum_method_hollowcore_check_duplicate() != 10506) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_hollow_core_checksum_method_hollowcore_clear_logs() != 11584) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_hollow_core_checksum_method_hollowcore_compute_hash() != 34279) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_get_file() != 29901) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_get_logs() != 17376) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_get_pending_ids() != 17365) {
