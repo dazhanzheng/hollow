@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var status: String = "Initializing..."
+    @Environment(IngestionService.self) private var ingestion
 
     var body: some View {
         VStack(spacing: 16) {
@@ -10,21 +10,40 @@ struct ContentView: View {
                 .foregroundStyle(.tint)
             Text("hollow")
                 .font(.title)
-            Text(status)
-                .foregroundStyle(.secondary)
-        }
-        .padding()
-        .task {
-            if HollowBridge.shared.isReady {
-                let count = HollowBridge.shared.listFiles().count
-                status = "Database ready. \(count) files indexed."
-            } else {
-                status = "Failed to initialize database."
+
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(ingestion.isWatching ? .green : .gray)
+                    .frame(width: 8, height: 8)
+                Text(ingestion.isWatching ? "Watching ~/Hollow Inbox/" : "Not watching")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+
+            Text("\(ingestion.totalIngested) files ingested")
+                .font(.headline)
+
+            if !ingestion.recentFiles.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Recent:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(ingestion.recentFiles, id: \.self) { name in
+                        Text(name)
+                            .font(.caption)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: 300, alignment: .leading)
+            }
+
+            if let error = ingestion.lastError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
         }
+        .padding()
+        .frame(minWidth: 350, minHeight: 300)
     }
-}
-
-#Preview {
-    ContentView()
 }
