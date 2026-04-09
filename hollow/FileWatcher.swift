@@ -47,7 +47,7 @@ final class FileWatcher {
                 at: watchedURL,
                 withIntermediateDirectories: true
             )
-            HollowLogger.fileWatcher.info("Inbox ready at \(watchedURL.path)")
+            HollowLogger.fileWatcher.info("Inbox ready at \(self.watchedURL.path)")
         } catch {
             HollowLogger.fileWatcher.error("Failed to create inbox directory: \(error)")
         }
