@@ -1,0 +1,7 @@
+[package]
+name = "hollow-server"
+version = "0.1.0"
+edition = "2024"
+description = "Cloud server for hollow — lightweight API proxy for LLM/Embedding services"
+
+[dependencies]

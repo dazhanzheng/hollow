@@ -1,0 +1,15 @@
+# Rust build artifacts
+target/
+
+# macOS
+.DS_Store
+*.xcuserstate
+
+# Xcode
+build/
+DerivedData/
+xcuserdata/
+
+# IDE
+.idea/
+.vscode/
