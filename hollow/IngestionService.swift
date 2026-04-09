@@ -53,9 +53,12 @@ final class IngestionService {
 
     private func enqueueFiles(_ urls: [URL]) {
         let bridge = self.bridge
-        let total = urls.count
+        // Filter out files already in DB (fast path check, avoids expensive hash)
+        let newURLs = urls.filter { !bridge.pathExists($0.path) }
+        guard !newURLs.isEmpty else { return }
+        let total = newURLs.count
         ingestionQueue.async { [weak self] in
-            for (index, url) in urls.enumerated() {
+            for (index, url) in newURLs.enumerated() {
                 DispatchQueue.main.async { [weak self] in
                     self?.processingProgress = "Processing \(index + 1)/\(total)..."
                 }

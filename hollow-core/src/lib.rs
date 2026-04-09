@@ -124,6 +124,11 @@ impl HollowCore {
         let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
         FileStore::check_duplicate(&db.conn, &hash)
     }
+
+    pub fn path_exists(&self, path: String) -> Result<bool, HollowError> {
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        FileStore::path_exists(&db.conn, &path)
+    }
 }
 
 fn iso8601_now() -> String {

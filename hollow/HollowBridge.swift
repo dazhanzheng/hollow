@@ -55,6 +55,11 @@ final class HollowBridge: @unchecked Sendable {
         case error(String)
     }
 
+    func pathExists(_ path: String) -> Bool {
+        guard let core else { return false }
+        return (try? core.pathExists(path: path)) ?? false
+    }
+
     func ingestFile(path: String) -> IngestResult {
         guard let core else { return .error("HollowCore not initialized") }
         do {
