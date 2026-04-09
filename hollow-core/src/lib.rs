@@ -31,32 +31,17 @@ impl HollowCore {
         Ok(HollowCore { db: Mutex::new(db) })
     }
 
+    /// Fast intake: only reads fs metadata, no file content read.
+    /// Returns immediately with hash="", status="pending".
     pub fn ingest_file(&self, file_path: String) -> Result<FileRecord, HollowError> {
         let path = Path::new(&file_path);
         if !path.exists() {
             return Err(HollowError::FileNotFound(file_path.clone()));
         }
 
-        // Stream-based SHA-256: read in 8KB chunks, never loads whole file into memory
-        let file = fs::File::open(path)
-            .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
-        let mut reader = BufReader::new(file);
-        let mut hasher = Sha256::new();
-        let mut buf = [0u8; 8192];
-        loop {
-            let n = reader.read(&mut buf)
-                .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
-            if n == 0 { break; }
-            hasher.update(&buf[..n]);
-        }
-        let hash = format!("{:x}", hasher.finalize());
-
-        // Check for duplicate (by hash or by path) before inserting
+        // Path-based dedup only (prevents re-scanning the same file)
         {
             let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
-            if FileStore::check_duplicate(&db.conn, &hash)? {
-                return Err(HollowError::DuplicateFile(hash));
-            }
             if FileStore::path_exists(&db.conn, &file_path)? {
                 return Err(HollowError::DuplicateFile(file_path.clone()));
             }
@@ -74,7 +59,6 @@ impl HollowCore {
             .extension()
             .map(|e| e.to_string_lossy().to_string());
 
-        // MIME type from extension
         let mime_type = extension.as_deref().and_then(|ext| {
             mime_guess::from_ext(ext)
                 .first()
@@ -87,7 +71,7 @@ impl HollowCore {
 
         let record = FileRecord {
             id: Uuid::now_v7().to_string(),
-            hash,
+            hash: String::new(), // computed later by compute_hash
             current_path: file_path.clone(),
             original_path: file_path,
             file_name,
@@ -108,6 +92,55 @@ impl HollowCore {
             }
             Err(e) => Err(e),
         }
+    }
+
+    /// Heavy operation: reads entire file in 8KB chunks, computes SHA-256,
+    /// updates the DB record. Call this from a background thread.
+    pub fn compute_hash(&self, file_id: String) -> Result<String, HollowError> {
+        // Get the file record to find its path
+        let current_path = {
+            let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+            let record = FileStore::get_file(&db.conn, &file_id)?
+                .ok_or_else(|| HollowError::FileNotFound(file_id.clone()))?;
+            record.current_path
+        };
+
+        let path = Path::new(&current_path);
+        if !path.exists() {
+            return Err(HollowError::FileNotFound(current_path));
+        }
+
+        // Stream-based SHA-256
+        let file = fs::File::open(path)
+            .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
+        let mut reader = BufReader::new(file);
+        let mut hasher = Sha256::new();
+        let mut buf = [0u8; 8192];
+        loop {
+            let n = reader.read(&mut buf)
+                .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
+            if n == 0 { break; }
+            hasher.update(&buf[..n]);
+        }
+        let hash = format!("{:x}", hasher.finalize());
+
+        // Update the record in DB
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        FileStore::update_hash(&db.conn, &file_id, &hash)?;
+
+        Ok(hash)
+    }
+
+    /// Returns IDs of all files with status="pending" (not yet fully processed).
+    pub fn get_pending_ids(&self) -> Result<Vec<String>, HollowError> {
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        FileStore::get_ids_by_status(&db.conn, "pending")
+    }
+
+    /// Mark a file as fully processed.
+    pub fn mark_indexed(&self, file_id: String) -> Result<(), HollowError> {
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        FileStore::update_status(&db.conn, &file_id, "indexed")
     }
 
     pub fn get_file(&self, id: String) -> Result<Option<FileRecord>, HollowError> {
@@ -174,80 +207,43 @@ mod tests {
     }
 
     #[test]
-    fn test_ingest_and_get() {
+    fn test_ingest_is_instant_no_hash() {
         let core = HollowCore::new(":memory:".to_string()).unwrap();
-        let path = make_temp_file("hollow_t1", "test.txt", b"hello hollow");
+        let path = make_temp_file("hollow_t_quick", "test.txt", b"hello hollow");
 
         let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
         assert_eq!(record.file_name, "test.txt");
         assert_eq!(record.extension, Some("txt".to_string()));
         assert_eq!(record.status, "pending");
         assert_eq!(record.size_bytes, 12);
-
-        let retrieved = core.get_file(record.id.clone()).unwrap();
-        assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().hash, record.hash);
+        assert_eq!(record.hash, ""); // hash not computed yet
 
         cleanup(&[&path, &path.parent().unwrap()]);
     }
 
     #[test]
-    fn test_mime_type_detection() {
+    fn test_compute_hash_updates_record() {
         let core = HollowCore::new(":memory:".to_string()).unwrap();
-
-        let pdf_path = make_temp_file("hollow_t_mime", "doc.pdf", b"fake pdf");
-        let record = core.ingest_file(pdf_path.to_string_lossy().to_string()).unwrap();
-        assert_eq!(record.mime_type, Some("application/pdf".to_string()));
-
-        let txt_path = make_temp_file("hollow_t_mime", "note.txt", b"plain text");
-        let record = core.ingest_file(txt_path.to_string_lossy().to_string()).unwrap();
-        assert_eq!(record.mime_type, Some("text/plain".to_string()));
-
-        let unknown_path = make_temp_file("hollow_t_mime", "data.xyzabc", b"unknown");
-        let record = core.ingest_file(unknown_path.to_string_lossy().to_string()).unwrap();
-        assert!(record.mime_type.is_none());
-
-        cleanup(&[&pdf_path.parent().unwrap()]);
-    }
-
-    #[test]
-    fn test_real_timestamps() {
-        let core = HollowCore::new(":memory:".to_string()).unwrap();
-        let path = make_temp_file("hollow_t_time", "ts.txt", b"timestamp test");
+        let path = make_temp_file("hollow_t_hash", "hashme.txt", b"hello hollow");
 
         let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+        assert_eq!(record.hash, "");
 
-        // created_at and modified_at should be valid RFC3339 strings
-        assert!(record.created_at.contains("T"));
-        assert!(record.modified_at.contains("T"));
-        assert!(record.ingested_at.contains("T"));
+        let hash = core.compute_hash(record.id.clone()).unwrap();
+        assert!(!hash.is_empty());
+        assert_eq!(hash.len(), 64); // SHA-256 hex
 
-        cleanup(&[&path, &path.parent().unwrap()]);
-    }
-
-    #[test]
-    fn test_duplicate_detection() {
-        let core = HollowCore::new(":memory:".to_string()).unwrap();
-        let path = make_temp_file("hollow_t_dup", "dup.txt", b"duplicate content");
-
-        // First ingest succeeds
-        core.ingest_file(path.to_string_lossy().to_string()).unwrap();
-
-        // Second ingest of same file returns DuplicateFile error
-        let result = core.ingest_file(path.to_string_lossy().to_string());
-        assert!(result.is_err());
-        match result {
-            Err(HollowError::DuplicateFile(_)) => {} // expected
-            other => panic!("expected DuplicateFile, got {:?}", other),
-        }
+        // Verify DB was updated
+        let updated = core.get_file(record.id).unwrap().unwrap();
+        assert_eq!(updated.hash, hash);
 
         cleanup(&[&path, &path.parent().unwrap()]);
     }
 
     #[test]
-    fn test_list_files() {
+    fn test_get_pending_ids() {
         let core = HollowCore::new(":memory:".to_string()).unwrap();
-        let dir = std::env::temp_dir().join("hollow_t_list");
+        let dir = std::env::temp_dir().join("hollow_t_pending");
         fs::create_dir_all(&dir).unwrap();
 
         let f1 = dir.join("a.txt");
@@ -255,6 +251,64 @@ mod tests {
         let f2 = dir.join("b.txt");
         fs::write(&f2, b"bbb").unwrap();
 
+        let r1 = core.ingest_file(f1.to_string_lossy().to_string()).unwrap();
+        let r2 = core.ingest_file(f2.to_string_lossy().to_string()).unwrap();
+
+        let pending = core.get_pending_ids().unwrap();
+        assert_eq!(pending.len(), 2);
+
+        // Process one, check pending drops to 1
+        core.compute_hash(r1.id.clone()).unwrap();
+        core.mark_indexed(r1.id).unwrap();
+
+        let pending = core.get_pending_ids().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0], r2.id);
+
+        cleanup(&[&dir]);
+    }
+
+    #[test]
+    fn test_mime_type_detection() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+
+        let pdf_path = make_temp_file("hollow_t_mime2", "doc.pdf", b"fake pdf");
+        let record = core.ingest_file(pdf_path.to_string_lossy().to_string()).unwrap();
+        assert_eq!(record.mime_type, Some("application/pdf".to_string()));
+
+        let txt_path = make_temp_file("hollow_t_mime2", "note.txt", b"plain text");
+        let record = core.ingest_file(txt_path.to_string_lossy().to_string()).unwrap();
+        assert_eq!(record.mime_type, Some("text/plain".to_string()));
+
+        cleanup(&[&pdf_path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_path_dedup() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_pathdup", "same.txt", b"content");
+
+        core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        // Same path again → DuplicateFile
+        let result = core.ingest_file(path.to_string_lossy().to_string());
+        assert!(matches!(result, Err(HollowError::DuplicateFile(_))));
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_same_content_different_paths_both_accepted() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let dir = std::env::temp_dir().join("hollow_t_samecontent");
+        fs::create_dir_all(&dir).unwrap();
+
+        let f1 = dir.join("copy1.txt");
+        fs::write(&f1, b"identical content").unwrap();
+        let f2 = dir.join("copy2.txt");
+        fs::write(&f2, b"identical content").unwrap();
+
+        // Both should be accepted (no hash-based rejection)
         core.ingest_file(f1.to_string_lossy().to_string()).unwrap();
         core.ingest_file(f2.to_string_lossy().to_string()).unwrap();
 

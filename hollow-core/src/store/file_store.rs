@@ -122,6 +122,26 @@ impl FileStore {
         )?;
         Ok(count > 0)
     }
+
+    pub fn update_hash(conn: &Connection, id: &str, hash: &str) -> Result<(), HollowError> {
+        let updated = conn.execute(
+            "UPDATE files SET hash = ?1 WHERE id = ?2",
+            rusqlite::params![hash, id],
+        )?;
+        if updated == 0 {
+            return Err(HollowError::FileNotFound(id.to_string()));
+        }
+        Ok(())
+    }
+
+    pub fn get_ids_by_status(conn: &Connection, status: &str) -> Result<Vec<String>, HollowError> {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM files WHERE status = ?1 ORDER BY ingested_at ASC",
+        )?;
+        let ids = stmt.query_map(rusqlite::params![status], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        Ok(ids)
+    }
 }
 
 #[cfg(test)]

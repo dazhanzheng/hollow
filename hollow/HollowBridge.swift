@@ -55,11 +55,7 @@ final class HollowBridge: @unchecked Sendable {
         case error(String)
     }
 
-    func pathExists(_ path: String) -> Bool {
-        guard let core else { return false }
-        return (try? core.pathExists(path: path)) ?? false
-    }
-
+    /// Fast intake: only reads fs metadata, no file content. Returns instantly.
     func ingestFile(path: String) -> IngestResult {
         guard let core else { return .error("HollowCore not initialized") }
         do {
@@ -70,5 +66,27 @@ final class HollowBridge: @unchecked Sendable {
         } catch {
             return .error(error.localizedDescription)
         }
+    }
+
+    /// Heavy: reads file, computes SHA-256. Call from background thread.
+    func computeHash(fileId: String) -> String? {
+        guard let core else { return nil }
+        return try? core.computeHash(fileId: fileId)
+    }
+
+    /// Mark file as fully processed.
+    func markIndexed(fileId: String) {
+        guard let core else { return }
+        try? core.markIndexed(fileId: fileId)
+    }
+
+    func getPendingIds() -> [String] {
+        guard let core else { return [] }
+        return (try? core.getPendingIds()) ?? []
+    }
+
+    func pathExists(_ path: String) -> Bool {
+        guard let core else { return false }
+        return (try? core.pathExists(path: path)) ?? false
     }
 }
