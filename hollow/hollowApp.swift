@@ -24,6 +24,11 @@ struct hollowApp: App {
                         openWindow(id: "database-browser")
                     }
                     .keyboardShortcut("D", modifiers: [.command, .shift])
+
+                    Button("Log Viewer") {
+                        openWindow(id: "log-viewer")
+                    }
+                    .keyboardShortcut("L", modifiers: [.command, .shift])
                 }
             }
         }
@@ -34,6 +39,10 @@ struct hollowApp: App {
 
         Window("Database Browser", id: "database-browser") {
             DatabaseBrowserView()
+        }
+
+        Window("Log Viewer", id: "log-viewer") {
+            LogViewerView()
         }
     }
 }
