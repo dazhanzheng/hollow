@@ -16,10 +16,12 @@ final class IngestionService {
     private let intakeQueue = DispatchQueue(label: "com.syncpulse.hollow.intake")
 
     // Concurrent queue for heavy background work (hash, future: content extraction)
+    // Semaphore limits to 3 concurrent I/O operations to avoid saturating disk bandwidth
     private let processingQueue = DispatchQueue(
         label: "com.syncpulse.hollow.processing",
         attributes: .concurrent
     )
+    private let ioSemaphore = DispatchSemaphore(value: 3)
 
     init(bridge: HollowBridge = .shared) {
         self.bridge = bridge
@@ -103,9 +105,13 @@ final class IngestionService {
         for fileId in pendingIds {
             group.enter()
             processingQueue.async { [weak self] in
-                defer { group.leave() }
+                defer {
+                    self?.ioSemaphore.signal()
+                    group.leave()
+                }
+                self?.ioSemaphore.wait()
 
-                // Compute hash (heavy I/O)
+                // Compute hash (heavy I/O, max 3 concurrent)
                 _ = bridge.computeHash(fileId: fileId)
                 bridge.markIndexed(fileId: fileId)
 
