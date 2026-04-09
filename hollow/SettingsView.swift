@@ -54,7 +54,7 @@ struct SettingsView: View {
                     }
                 }
             }
-        }
+
             Section("Developer") {
                 Toggle("Debug Mode", isOn: $debugMode)
                 Text("Shows Debug menu in the menu bar with database browser.")
