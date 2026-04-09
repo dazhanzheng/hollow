@@ -147,11 +147,6 @@ final class FileWatcher {
     /// Fallback: when FSEvents says it dropped events, do a full diff scan.
     private func fallbackFullScan() {
         let currentFiles = scanAllFiles()
-        let currentPaths = Set(currentFiles.map(\.path))
-
-        // We don't have a previous snapshot in the new architecture,
-        // so just report all current files as potentially new.
-        // The ingestion layer's inode/path dedup will handle duplicates.
         if !currentFiles.isEmpty {
             onNewFiles?(currentFiles)
         }
