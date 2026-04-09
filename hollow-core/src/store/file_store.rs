@@ -113,6 +113,15 @@ impl FileStore {
         )?;
         Ok(count > 0)
     }
+
+    pub fn path_exists(conn: &Connection, path: &str) -> Result<bool, HollowError> {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM files WHERE current_path = ?1",
+            rusqlite::params![path],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
 }
 
 #[cfg(test)]

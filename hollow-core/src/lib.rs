@@ -51,11 +51,14 @@ impl HollowCore {
         }
         let hash = format!("{:x}", hasher.finalize());
 
-        // Check for duplicate before inserting
+        // Check for duplicate (by hash or by path) before inserting
         {
             let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
             if FileStore::check_duplicate(&db.conn, &hash)? {
                 return Err(HollowError::DuplicateFile(hash));
+            }
+            if FileStore::path_exists(&db.conn, &file_path)? {
+                return Err(HollowError::DuplicateFile(file_path.clone()));
             }
         }
 

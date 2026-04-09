@@ -24,8 +24,17 @@ final class IngestionService {
     func start() {
         watcher.start()
         isWatching = true
-        totalIngested = bridge.listFiles(limit: UInt32.max, offset: 0).count
-        performStartupScan()
+
+        let bridge = self.bridge
+        Task.detached(priority: .utility) { [weak self] in
+            let count = bridge.listFiles(limit: UInt32.max, offset: 0).count
+            await MainActor.run { [weak self] in
+                self?.totalIngested = count
+            }
+            await MainActor.run { [weak self] in
+                self?.performStartupScan()
+            }
+        }
     }
 
     func stop() {
