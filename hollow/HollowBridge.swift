@@ -48,4 +48,22 @@ class HollowBridge {
             return []
         }
     }
+
+    enum IngestResult {
+        case success(FileRecord)
+        case duplicate
+        case error(String)
+    }
+
+    func ingestFile(path: String) -> IngestResult {
+        guard let core else { return .error("HollowCore not initialized") }
+        do {
+            let record = try core.ingestFile(filePath: path)
+            return .success(record)
+        } catch HollowError.DuplicateFile(_) {
+            return .duplicate
+        } catch {
+            return .error(error.localizedDescription)
+        }
+    }
 }
