@@ -56,24 +56,22 @@ final class IngestionService {
     }
 
     private func handleNewFiles(_ urls: [URL]) {
-        Task.detached(priority: .utility) { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             for url in urls {
                 let result = self.bridge.ingestFile(path: url.path)
-                await MainActor.run {
-                    switch result {
-                    case .success(let record):
-                        self.totalIngested += 1
-                        self.recentFiles.insert(record.fileName, at: 0)
-                        if self.recentFiles.count > 10 {
-                            self.recentFiles.removeLast()
-                        }
-                        self.lastError = nil
-                    case .duplicate:
-                        break
-                    case .error(let message):
-                        self.lastError = message
+                switch result {
+                case .success(let record):
+                    self.totalIngested += 1
+                    self.recentFiles.insert(record.fileName, at: 0)
+                    if self.recentFiles.count > 10 {
+                        self.recentFiles.removeLast()
                     }
+                    self.lastError = nil
+                case .duplicate:
+                    break
+                case .error(let message):
+                    self.lastError = message
                 }
             }
         }
