@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Swift-side wrapper that manages the HollowCore lifecycle.
 /// Constructs the database path in Application Support and holds
@@ -15,7 +16,7 @@ final class HollowBridge: @unchecked Sendable {
             let dbPath = try Self.databasePath()
             core = try HollowCore(dbPath: dbPath)
         } catch {
-            print("HollowBridge init failed: \(error)")
+            HollowLogger.bridge.error("HollowBridge init failed: \(error)")
             core = nil
         }
     }
@@ -44,7 +45,7 @@ final class HollowBridge: @unchecked Sendable {
         do {
             return try core.listFiles(limit: limit, offset: offset)
         } catch {
-            print("listFiles failed: \(error)")
+            HollowLogger.bridge.error("listFiles failed: \(error)")
             return []
         }
     }
@@ -83,6 +84,16 @@ final class HollowBridge: @unchecked Sendable {
     func getPendingIds() -> [String] {
         guard let core else { return [] }
         return (try? core.getPendingIds()) ?? []
+    }
+
+    func getLogs(sinceId: UInt64) -> [LogEntry] {
+        guard let core else { return [] }
+        return core.getLogs(sinceId: sinceId)
+    }
+
+    func clearLogs() {
+        guard let core else { return }
+        core.clearLogs()
     }
 
     func pathExists(_ path: String) -> Bool {

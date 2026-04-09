@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 @Observable
 final class IngestionService {
@@ -29,6 +30,7 @@ final class IngestionService {
     func start() {
         watcher.start()
         isWatching = true
+        HollowLogger.ingestion.info("Ingestion service started")
 
         let bridge = self.bridge
         intakeQueue.async { [weak self] in
@@ -50,6 +52,7 @@ final class IngestionService {
     func stop() {
         watcher.stop()
         isWatching = false
+        HollowLogger.ingestion.info("Ingestion service stopped")
     }
 
     /// Fast intake — metadata + quick_hash, instant DB insert, UI updates immediately.
@@ -68,10 +71,12 @@ final class IngestionService {
                             self.recentFiles.removeLast()
                         }
                         self.lastError = nil
+                        HollowLogger.ingestion.info("Ingested: \(record.fileName)")
                     case .duplicate:
-                        break
+                        HollowLogger.ingestion.debug("Duplicate skipped")
                     case .error(let message):
                         self.lastError = message
+                        HollowLogger.ingestion.error("Ingest error: \(message)")
                     }
                 }
             }

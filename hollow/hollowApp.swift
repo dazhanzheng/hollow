@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 
 @main
 struct hollowApp: App {
@@ -12,6 +13,8 @@ struct hollowApp: App {
                 .environment(ingestionService)
                 .onAppear {
                     ingestionService.start()
+                    RustLogRelay.shared.start()
+                    HollowLogger.app.info("hollow app launched")
                 }
         }
         .commands {

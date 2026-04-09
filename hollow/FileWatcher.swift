@@ -1,5 +1,6 @@
 import Foundation
 import CoreServices
+import os
 
 final class FileWatcher {
     private let watchedURL: URL
@@ -46,9 +47,9 @@ final class FileWatcher {
                 at: watchedURL,
                 withIntermediateDirectories: true
             )
-            print("FileWatcher: inbox ready at \(watchedURL.path)")
+            HollowLogger.fileWatcher.info("Inbox ready at \(watchedURL.path)")
         } catch {
-            print("FileWatcher: failed to create inbox directory: \(error)")
+            HollowLogger.fileWatcher.error("Failed to create inbox directory: \(error)")
         }
     }
 
@@ -79,7 +80,7 @@ final class FileWatcher {
             0.3,                    // latency (seconds) — coalesces rapid events
             flags
         ) else {
-            print("FileWatcher: failed to create FSEventStream")
+            HollowLogger.fileWatcher.error("Failed to create FSEventStream")
             return
         }
 
