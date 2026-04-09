@@ -11,49 +11,36 @@ struct DatabaseBrowserView: View {
     }
 
     var body: some View {
-        HSplitView {
-            // Left: file list
-            VStack(spacing: 0) {
-                // Search bar
-                TextField("Filter by name...", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(8)
-
-                // Table
-                List(filteredFiles, id: \.id, selection: $selectedFileId) { file in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            statusDot(file.status)
-                            Text(file.fileName)
-                                .fontWeight(.medium)
-                                .lineLimit(1)
-                        }
-                        HStack(spacing: 8) {
-                            Text(formatBytes(file.sizeBytes))
-                            Text(file.mimeType ?? "unknown")
-                            Text(file.status)
-                                .foregroundStyle(statusColor(file.status))
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        NavigationSplitView {
+            List(filteredFiles, id: \.id, selection: $selectedFileId) { file in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        statusDot(file.status)
+                        Text(file.fileName)
+                            .fontWeight(.medium)
+                            .lineLimit(1)
                     }
-                    .padding(.vertical, 2)
+                    HStack(spacing: 8) {
+                        Text(formatBytes(file.sizeBytes))
+                        Text(file.mimeType ?? "unknown")
+                        Text(file.status)
+                            .foregroundStyle(statusColor(file.status))
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
+                .padding(.vertical, 2)
             }
-            .frame(minWidth: 300)
-
-            // Right: detail panel
+            .searchable(text: $searchText, prompt: "Filter by name...")
+            .navigationSplitViewColumnWidth(min: 250, ideal: 320)
+        } detail: {
             if let file = selectedFile {
                 ScrollView {
                     DetailPanel(file: file)
                 }
-                .frame(minWidth: 350)
             } else {
-                VStack {
-                    Text("Select a file to view details")
-                        .foregroundStyle(.secondary)
-                }
-                .frame(minWidth: 350)
+                Text("Select a file to view details")
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(minWidth: 700, minHeight: 450)
