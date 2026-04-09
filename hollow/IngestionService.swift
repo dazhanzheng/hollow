@@ -36,7 +36,7 @@ final class IngestionService {
             DispatchQueue.main.async { self?.totalIngested = count }
 
             // Ingest any files added while app was closed
-            let inboxFiles = Self.scanInbox(FileWatcher.inboxURL)
+            let inboxFiles = self?.watcher.scanAllFiles() ?? []
             let newFiles = inboxFiles.filter { !bridge.pathExists($0.path) }
             if !newFiles.isEmpty {
                 self?.intakeFiles(newFiles)
@@ -107,33 +107,4 @@ final class IngestionService {
         }
     }
 
-    private static let ignoredExtensions: Set<String> = [
-        "tmp", "download", "crdownload", "partial"
-    ]
-
-    private static func scanInbox(_ inboxURL: URL) -> [URL] {
-        guard let enumerator = FileManager.default.enumerator(
-            at: inboxURL,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else { return [] }
-
-        var result: [URL] = []
-        for case let url as URL in enumerator {
-            let name = url.lastPathComponent
-            if name.hasPrefix(".") {
-                enumerator.skipDescendants()
-                continue
-            }
-            let ext = url.pathExtension.lowercased()
-            if ignoredExtensions.contains(ext) { continue }
-            var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir),
-                  !isDir.boolValue else {
-                continue
-            }
-            result.append(url)
-        }
-        return result
-    }
 }
