@@ -7,6 +7,7 @@ final class IngestionService {
     private(set) var totalIngested: Int = 0
     private(set) var recentFiles: [String] = []
     private(set) var lastError: String?
+    private(set) var processingProgress: String?
 
     private let watcher: FileWatcher
     private let bridge: HollowBridge
@@ -56,23 +57,35 @@ final class IngestionService {
     }
 
     private func handleNewFiles(_ urls: [URL]) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            for url in urls {
-                let result = self.bridge.ingestFile(path: url.path)
-                switch result {
-                case .success(let record):
-                    self.totalIngested += 1
-                    self.recentFiles.insert(record.fileName, at: 0)
-                    if self.recentFiles.count > 10 {
-                        self.recentFiles.removeLast()
-                    }
-                    self.lastError = nil
-                case .duplicate:
-                    break
-                case .error(let message):
-                    self.lastError = message
+        let bridge = self.bridge
+        let total = urls.count
+        Task.detached(priority: .utility) { [weak self] in
+            for (index, url) in urls.enumerated() {
+                await MainActor.run { [weak self] in
+                    self?.processingProgress = "Processing \(index + 1)/\(total)..."
                 }
+
+                let result = bridge.ingestFile(path: url.path)
+
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    switch result {
+                    case .success(let record):
+                        self.totalIngested += 1
+                        self.recentFiles.insert(record.fileName, at: 0)
+                        if self.recentFiles.count > 10 {
+                            self.recentFiles.removeLast()
+                        }
+                        self.lastError = nil
+                    case .duplicate:
+                        break
+                    case .error(let message):
+                        self.lastError = message
+                    }
+                }
+            }
+            await MainActor.run { [weak self] in
+                self?.processingProgress = nil
             }
         }
     }

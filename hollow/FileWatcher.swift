@@ -38,15 +38,23 @@ final class FileWatcher {
     }
 
     static var inboxURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        // Use real home directory, not sandboxed container path
+        let pw = getpwuid(getuid())!
+        let realHome = String(cString: pw.pointee.pw_dir)
+        return URL(fileURLWithPath: realHome)
             .appendingPathComponent("Hollow Inbox", isDirectory: true)
     }
 
     private func ensureDirectoryExists() {
-        try? FileManager.default.createDirectory(
-            at: watchedURL,
-            withIntermediateDirectories: true
-        )
+        do {
+            try FileManager.default.createDirectory(
+                at: watchedURL,
+                withIntermediateDirectories: true
+            )
+            print("FileWatcher: inbox ready at \(watchedURL.path)")
+        } catch {
+            print("FileWatcher: failed to create inbox directory: \(error)")
+        }
     }
 
     private func startWatching() {

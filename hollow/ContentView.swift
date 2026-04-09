@@ -23,6 +23,12 @@ struct ContentView: View {
             Text("\(ingestion.totalIngested) files ingested")
                 .font(.headline)
 
+            if let progress = ingestion.processingProgress {
+                Text(progress)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
             if !ingestion.recentFiles.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Recent:")

@@ -11,6 +11,7 @@ use store::FileStore;
 
 use sha2::{Sha256, Digest};
 use std::fs;
+use std::io::{BufReader, Read as _};
 use std::path::Path;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -36,11 +37,18 @@ impl HollowCore {
             return Err(HollowError::FileNotFound(file_path.clone()));
         }
 
-        let content = fs::read(path)
+        // Stream-based SHA-256: read in 8KB chunks, never loads whole file into memory
+        let file = fs::File::open(path)
             .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
-
+        let mut reader = BufReader::new(file);
         let mut hasher = Sha256::new();
-        hasher.update(&content);
+        let mut buf = [0u8; 8192];
+        loop {
+            let n = reader.read(&mut buf)
+                .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
+            if n == 0 { break; }
+            hasher.update(&buf[..n]);
+        }
         let hash = format!("{:x}", hasher.finalize());
 
         // Check for duplicate before inserting

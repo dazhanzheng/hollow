@@ -3,7 +3,7 @@ import Foundation
 /// Swift-side wrapper that manages the HollowCore lifecycle.
 /// Constructs the database path in Application Support and holds
 /// a reference to the Rust-backed HollowCore instance.
-class HollowBridge {
+final class HollowBridge: @unchecked Sendable {
     static let shared = HollowBridge()
 
     private var core: HollowCore?
