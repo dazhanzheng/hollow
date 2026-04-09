@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @AppStorage("enableFullHash") private var enableFullHash = false
+    @State private var isComputingFullHash = false
+    @State private var fullHashProgress: String?
+
     private let inboxPath = FileWatcher.inboxURL.path
     private let dbPath: String = {
         let appSupport = FileManager.default.urls(
@@ -26,9 +30,56 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            Section("Hashing") {
+                Toggle("Compute full SHA-256 hash for all files", isOn: $enableFullHash)
+
+                Text("Quick hash (sampled) is always computed at intake. Full hash reads the entire file and is useful for 100% accurate duplicate detection.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if enableFullHash {
+                    HStack {
+                        Button("Run Full Hash Now") {
+                            runFullHashForAll()
+                        }
+                        .disabled(isComputingFullHash)
+
+                        if let progress = fullHashProgress {
+                            Text(progress)
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .frame(width: 450)
         .padding()
+    }
+
+    private func runFullHashForAll() {
+        isComputingFullHash = true
+        fullHashProgress = "Starting..."
+
+        let bridge = HollowBridge.shared
+        DispatchQueue.global(qos: .utility).async {
+            let allFiles = bridge.listFiles(limit: UInt32.max, offset: 0)
+            let needsHash = allFiles.filter { $0.hash.isEmpty }
+            let total = needsHash.count
+
+            for (index, file) in needsHash.enumerated() {
+                _ = bridge.computeHash(fileId: file.id)
+                DispatchQueue.main.async {
+                    fullHashProgress = "Hashing \(index + 1)/\(total)..."
+                }
+            }
+
+            DispatchQueue.main.async {
+                fullHashProgress = nil
+                isComputingFullHash = false
+            }
+        }
     }
 }

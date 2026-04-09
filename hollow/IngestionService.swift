@@ -94,12 +94,15 @@ final class IngestionService {
         }
     }
 
-    /// Mark pending files as indexed.
-    /// Quick hash is computed during intake. Full hash available on-demand only.
+    /// Mark pending files as indexed, optionally compute full hash if enabled.
     private func processAllPending() {
         let bridge = self.bridge
+        let fullHashEnabled = UserDefaults.standard.bool(forKey: "enableFullHash")
         let pendingIds = bridge.getPendingIds()
         for fileId in pendingIds {
+            if fullHashEnabled {
+                _ = bridge.computeHash(fileId: fileId)
+            }
             bridge.markIndexed(fileId: fileId)
         }
     }
