@@ -7,21 +7,12 @@ final class IngestionService {
     private(set) var totalIngested: Int = 0
     private(set) var recentFiles: [String] = []
     private(set) var lastError: String?
-    private(set) var processingProgress: String?
 
     private let watcher: FileWatcher
     private let bridge: HollowBridge
 
-    // Serial queue for fast intake (metadata only, instant)
+    // Serial queue for intake (metadata + quick_hash, fast)
     private let intakeQueue = DispatchQueue(label: "com.syncpulse.hollow.intake")
-
-    // Concurrent queue for heavy background work (hash, future: content extraction)
-    // Semaphore limits to 3 concurrent I/O operations to avoid saturating disk bandwidth
-    private let processingQueue = DispatchQueue(
-        label: "com.syncpulse.hollow.processing",
-        attributes: .concurrent
-    )
-    private let ioSemaphore = DispatchSemaphore(value: 3)
 
     init(bridge: HollowBridge = .shared) {
         self.bridge = bridge
@@ -40,7 +31,6 @@ final class IngestionService {
         isWatching = true
 
         let bridge = self.bridge
-        // Load count and process startup scan entirely off main thread
         intakeQueue.async { [weak self] in
             let count = bridge.listFiles(limit: UInt32.max, offset: 0).count
             DispatchQueue.main.async { self?.totalIngested = count }
@@ -52,7 +42,7 @@ final class IngestionService {
                 self?.intakeFiles(newFiles)
             }
 
-            // Process any pending files from previous runs (hash not computed)
+            // Mark any leftover pending files as indexed
             self?.processAllPending()
         }
     }
@@ -62,7 +52,7 @@ final class IngestionService {
         isWatching = false
     }
 
-    /// Phase 1: Fast intake — metadata only, instant DB insert, UI updates immediately.
+    /// Fast intake — metadata + quick_hash, instant DB insert, UI updates immediately.
     private func intakeFiles(_ urls: [URL]) {
         let bridge = self.bridge
         intakeQueue.async { [weak self] in
@@ -86,7 +76,6 @@ final class IngestionService {
                 }
             }
 
-            // After intake batch, kick off background processing
             self?.processAllPending()
         }
     }
@@ -98,7 +87,6 @@ final class IngestionService {
             for url in urls {
                 bridge.markMissing(path: url.path)
             }
-            // Recount after removals
             let count = bridge.listFiles(limit: UInt32.max, offset: 0).count
             DispatchQueue.main.async { [weak self] in
                 self?.totalIngested = count
@@ -106,42 +94,13 @@ final class IngestionService {
         }
     }
 
-    /// Phase 2: Background processing — hash computation, parallel across CPU cores.
+    /// Mark pending files as indexed.
+    /// Quick hash is computed during intake. Full hash available on-demand only.
     private func processAllPending() {
         let bridge = self.bridge
         let pendingIds = bridge.getPendingIds()
-        guard !pendingIds.isEmpty else { return }
-
-        let total = pendingIds.count
-        let completed = AtomicCounter()
-
-        DispatchQueue.main.async { [weak self] in
-            self?.processingProgress = "Hashing 0/\(total)..."
-        }
-
-        let group = DispatchGroup()
         for fileId in pendingIds {
-            group.enter()
-            processingQueue.async { [weak self] in
-                defer {
-                    self?.ioSemaphore.signal()
-                    group.leave()
-                }
-                self?.ioSemaphore.wait()
-
-                // Compute hash (heavy I/O, max 3 concurrent)
-                _ = bridge.computeHash(fileId: fileId)
-                bridge.markIndexed(fileId: fileId)
-
-                let done = completed.increment()
-                DispatchQueue.main.async { [weak self] in
-                    self?.processingProgress = "Hashing \(done)/\(total)..."
-                }
-            }
-        }
-
-        group.notify(queue: .main) { [weak self] in
-            self?.processingProgress = nil
+            bridge.markIndexed(fileId: fileId)
         }
     }
 
@@ -161,18 +120,5 @@ final class IngestionService {
             guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) else { return false }
             return !isDir.boolValue
         }
-    }
-}
-
-/// Simple thread-safe counter for tracking parallel progress.
-private final class AtomicCounter: @unchecked Sendable {
-    private var value = 0
-    private let lock = NSLock()
-
-    func increment() -> Int {
-        lock.lock()
-        defer { lock.unlock() }
-        value += 1
-        return value
     }
 }

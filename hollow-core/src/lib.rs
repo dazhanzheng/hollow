@@ -85,9 +85,13 @@ impl HollowCore {
         let modified_at = system_time_to_rfc3339(fs_metadata.modified().ok());
         let ingested_at = iso8601_now();
 
+        // Quick hash: sample 5 points across the file (< 1ms for any file size)
+        let quick_hash = compute_quick_hash(path, fs_metadata.len())?;
+
         let record = FileRecord {
             id: Uuid::now_v7().to_string(),
-            hash: String::new(), // computed later by compute_hash
+            hash: String::new(), // full hash only on demand
+            quick_hash,
             inode,
             current_path: file_path.clone(),
             original_path: file_path,
@@ -186,6 +190,51 @@ impl HollowCore {
         let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
         FileStore::mark_missing_by_path(&db.conn, &path)
     }
+}
+
+/// Quick hash: SHA-256 of file_size + 5 sampled 4KB blocks.
+/// Deterministic — same file always produces same hash.
+/// Covers head, 25%, 50%, 75%, tail. For files <20KB, reads entire file.
+fn compute_quick_hash(path: &Path, file_size: u64) -> Result<String, HollowError> {
+    use std::io::{Seek, SeekFrom};
+
+    const BLOCK_SIZE: u64 = 4096;
+    const SMALL_FILE_THRESHOLD: u64 = BLOCK_SIZE * 5; // 20KB
+
+    let mut file = fs::File::open(path)
+        .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
+    let mut hasher = Sha256::new();
+
+    // Include file size in hash so different-sized files always differ
+    hasher.update(file_size.to_le_bytes());
+
+    if file_size <= SMALL_FILE_THRESHOLD {
+        // Small file: read everything
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)
+            .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
+        hasher.update(&buf);
+    } else {
+        // Sample 5 positions: 0, 25%, 50%, 75%, end-4KB
+        let positions = [
+            0,
+            file_size / 4,
+            file_size / 2,
+            file_size * 3 / 4,
+            file_size.saturating_sub(BLOCK_SIZE),
+        ];
+
+        let mut buf = [0u8; BLOCK_SIZE as usize];
+        for pos in positions {
+            file.seek(SeekFrom::Start(pos))
+                .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
+            let n = file.read(&mut buf)
+                .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
+            hasher.update(&buf[..n]);
+        }
+    }
+
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn iso8601_now() -> String {

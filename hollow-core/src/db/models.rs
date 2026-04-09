@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct FileRecord {
     pub id: String,
     pub hash: String,
+    pub quick_hash: String,
     pub inode: Option<i64>,
     pub current_path: String,
     pub original_path: String,

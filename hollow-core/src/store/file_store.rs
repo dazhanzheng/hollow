@@ -8,11 +8,12 @@ pub struct FileStore;
 impl FileStore {
     pub fn insert_file(conn: &Connection, record: FileRecord) -> Result<(), HollowError> {
         conn.execute(
-            "INSERT INTO files (id, hash, inode, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT INTO files (id, hash, quick_hash, inode, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             rusqlite::params![
                 record.id,
                 record.hash,
+                record.quick_hash,
                 record.inode,
                 record.current_path,
                 record.original_path,
@@ -33,21 +34,22 @@ impl FileStore {
         Ok(FileRecord {
             id: row.get(0)?,
             hash: row.get(1)?,
-            inode: row.get(2)?,
-            current_path: row.get(3)?,
-            original_path: row.get(4)?,
-            file_name: row.get(5)?,
-            extension: row.get(6)?,
-            mime_type: row.get(7)?,
-            size_bytes: row.get(8)?,
-            created_at: row.get(9)?,
-            modified_at: row.get(10)?,
-            ingested_at: row.get(11)?,
-            status: row.get(12)?,
+            quick_hash: row.get(2)?,
+            inode: row.get(3)?,
+            current_path: row.get(4)?,
+            original_path: row.get(5)?,
+            file_name: row.get(6)?,
+            extension: row.get(7)?,
+            mime_type: row.get(8)?,
+            size_bytes: row.get(9)?,
+            created_at: row.get(10)?,
+            modified_at: row.get(11)?,
+            ingested_at: row.get(12)?,
+            status: row.get(13)?,
         })
     }
 
-    const SELECT_COLS: &str = "id, hash, inode, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status";
+    const SELECT_COLS: &str = "id, hash, quick_hash, inode, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status";
 
     pub fn get_file(conn: &Connection, id: &str) -> Result<Option<FileRecord>, HollowError> {
         let sql = format!("SELECT {} FROM files WHERE id = ?1", Self::SELECT_COLS);
@@ -189,6 +191,7 @@ mod tests {
         FileRecord {
             id: "01961234-5678-7abc-def0-123456789abc".to_string(),
             hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
+            quick_hash: "abcd1234".to_string(),
             inode: Some(12345),
             current_path: "/Users/test/Documents/test.pdf".to_string(),
             original_path: "/Users/test/Downloads/test.pdf".to_string(),

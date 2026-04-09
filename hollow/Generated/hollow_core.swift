@@ -764,6 +764,7 @@ public func FfiConverterTypeHollowCore_lower(_ value: HollowCore) -> UInt64 {
 public struct FileRecord: Equatable, Hashable {
     public var id: String
     public var hash: String
+    public var quickHash: String
     public var inode: Int64?
     public var currentPath: String
     public var originalPath: String
@@ -778,9 +779,10 @@ public struct FileRecord: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, hash: String, inode: Int64?, currentPath: String, originalPath: String, fileName: String, `extension`: String?, mimeType: String?, sizeBytes: Int64, createdAt: String, modifiedAt: String, ingestedAt: String, status: String) {
+    public init(id: String, hash: String, quickHash: String, inode: Int64?, currentPath: String, originalPath: String, fileName: String, `extension`: String?, mimeType: String?, sizeBytes: Int64, createdAt: String, modifiedAt: String, ingestedAt: String, status: String) {
         self.id = id
         self.hash = hash
+        self.quickHash = quickHash
         self.inode = inode
         self.currentPath = currentPath
         self.originalPath = originalPath
@@ -812,6 +814,7 @@ public struct FfiConverterTypeFileRecord: FfiConverterRustBuffer {
             try FileRecord(
                 id: FfiConverterString.read(from: &buf), 
                 hash: FfiConverterString.read(from: &buf), 
+                quickHash: FfiConverterString.read(from: &buf), 
                 inode: FfiConverterOptionInt64.read(from: &buf), 
                 currentPath: FfiConverterString.read(from: &buf), 
                 originalPath: FfiConverterString.read(from: &buf), 
@@ -829,6 +832,7 @@ public struct FfiConverterTypeFileRecord: FfiConverterRustBuffer {
     public static func write(_ value: FileRecord, into buf: inout [UInt8]) {
         FfiConverterString.write(value.id, into: &buf)
         FfiConverterString.write(value.hash, into: &buf)
+        FfiConverterString.write(value.quickHash, into: &buf)
         FfiConverterOptionInt64.write(value.inode, into: &buf)
         FfiConverterString.write(value.currentPath, into: &buf)
         FfiConverterString.write(value.originalPath, into: &buf)

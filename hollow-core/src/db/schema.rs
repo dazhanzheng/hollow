@@ -1,4 +1,4 @@
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 const MIGRATION_V1: &str = "
 CREATE TABLE files (
@@ -54,6 +54,11 @@ ALTER TABLE files ADD COLUMN inode INTEGER;
 CREATE INDEX idx_files_inode ON files(inode);
 ";
 
+const MIGRATION_V3: &str = "
+ALTER TABLE files ADD COLUMN quick_hash TEXT NOT NULL DEFAULT '';
+CREATE INDEX idx_files_quick_hash ON files(quick_hash);
+";
+
 pub fn migrate(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     let current_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
 
@@ -65,6 +70,11 @@ pub fn migrate(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     if current_version < 2 {
         conn.execute_batch(MIGRATION_V2)?;
         conn.pragma_update(None, "user_version", 2)?;
+    }
+
+    if current_version < 3 {
+        conn.execute_batch(MIGRATION_V3)?;
+        conn.pragma_update(None, "user_version", 3)?;
     }
 
     Ok(())
