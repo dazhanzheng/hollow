@@ -2,8 +2,13 @@ import SwiftUI
 
 struct DatabaseBrowserView: View {
     @State private var files: [FileRecord] = []
-    @State private var selectedFile: FileRecord?
+    @State private var selectedFileId: String?
     @State private var searchText = ""
+
+    private var selectedFile: FileRecord? {
+        guard let id = selectedFileId else { return nil }
+        return files.first { $0.id == id }
+    }
 
     var body: some View {
         HSplitView {
@@ -15,7 +20,7 @@ struct DatabaseBrowserView: View {
                     .padding(8)
 
                 // Table
-                List(filteredFiles, id: \.id, selection: $selectedFile) { file in
+                List(filteredFiles, id: \.id, selection: $selectedFileId) { file in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             statusDot(file.status)
