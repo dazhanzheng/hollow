@@ -30,6 +30,9 @@ final class IngestionService {
         watcher.onNewFiles = { [weak self] urls in
             self?.intakeFiles(urls)
         }
+        watcher.onRemovedFiles = { [weak self] urls in
+            self?.handleRemovedFiles(urls)
+        }
     }
 
     func start() {
@@ -85,6 +88,21 @@ final class IngestionService {
 
             // After intake batch, kick off background processing
             self?.processAllPending()
+        }
+    }
+
+    /// Handle files removed from inbox — mark as "missing" in DB.
+    private func handleRemovedFiles(_ urls: [URL]) {
+        let bridge = self.bridge
+        intakeQueue.async { [weak self] in
+            for url in urls {
+                bridge.markMissing(path: url.path)
+            }
+            // Recount after removals
+            let count = bridge.listFiles(limit: UInt32.max, offset: 0).count
+            DispatchQueue.main.async { [weak self] in
+                self?.totalIngested = count
+            }
         }
     }
 

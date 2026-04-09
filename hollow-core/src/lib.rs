@@ -45,7 +45,7 @@ impl HollowCore {
 
         let inode = Some(fs_metadata.ino() as i64);
 
-        // Dedup by inode first (survives rename/move), then by path (fallback)
+        // Dedup: inode check (survives rename/move), then path check
         {
             let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
             if let Some(ino) = inode {
@@ -53,8 +53,16 @@ impl HollowCore {
                     return Err(HollowError::DuplicateFile(file_path.clone()));
                 }
             }
-            if FileStore::path_exists(&db.conn, &file_path)? {
-                return Err(HollowError::DuplicateFile(file_path.clone()));
+            // If path exists with status "missing", remove old record to make room
+            // (handles: user deleted file, then dropped a new file with same name)
+            match FileStore::path_status(&db.conn, &file_path)? {
+                Some(status) if status == "missing" => {
+                    FileStore::delete_by_path(&db.conn, &file_path)?;
+                }
+                Some(_) => {
+                    return Err(HollowError::DuplicateFile(file_path.clone()));
+                }
+                None => {} // path not in DB, proceed
             }
         }
 
@@ -170,6 +178,13 @@ impl HollowCore {
     pub fn path_exists(&self, path: String) -> Result<bool, HollowError> {
         let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
         FileStore::path_exists(&db.conn, &path)
+    }
+
+    /// Mark a file as missing (deleted from filesystem).
+    /// Clears inode so it won't block a new file with the same inode.
+    pub fn mark_missing(&self, path: String) -> Result<(), HollowError> {
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        FileStore::mark_missing_by_path(&db.conn, &path)
     }
 }
 

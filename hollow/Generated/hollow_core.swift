@@ -546,6 +546,12 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
      */
     func markIndexed(fileId: String) throws 
     
+    /**
+     * Mark a file as missing (deleted from filesystem).
+     * Clears inode so it won't block a new file with the same inode.
+     */
+    func markMissing(path: String) throws 
+    
     func pathExists(path: String) throws  -> Bool
     
 }
@@ -682,6 +688,18 @@ open func markIndexed(fileId: String)throws   {try rustCallWithError(FfiConverte
     uniffi_hollow_core_fn_method_hollowcore_mark_indexed(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(fileId),$0
+    )
+}
+}
+    
+    /**
+     * Mark a file as missing (deleted from filesystem).
+     * Clears inode so it won't block a new file with the same inode.
+     */
+open func markMissing(path: String)throws   {try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_mark_missing(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(path),$0
     )
 }
 }
@@ -1100,6 +1118,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_mark_indexed() != 20550) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_mark_missing() != 19324) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_path_exists() != 15088) {

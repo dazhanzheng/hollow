@@ -8,6 +8,7 @@ final class FileWatcher {
     private var debounceWorkItem: DispatchWorkItem?
 
     var onNewFiles: (([URL]) -> Void)?
+    var onRemovedFiles: (([URL]) -> Void)?
 
     private static let ignoredExtensions: Set<String> = [
         "tmp", "download", "crdownload", "partial"
@@ -99,15 +100,16 @@ final class FileWatcher {
     private func scanForNewFiles() {
         let currentFiles = currentFileNames()
         let newFileNames = currentFiles.subtracting(knownFiles)
+        let removedFileNames = knownFiles.subtracting(currentFiles)
         knownFiles = currentFiles
 
-        guard !newFileNames.isEmpty else { return }
-
-        let newURLs = newFileNames.compactMap { name -> URL? in
-            watchedURL.appendingPathComponent(name)
+        if !removedFileNames.isEmpty {
+            let removedURLs = removedFileNames.map { watchedURL.appendingPathComponent($0) }
+            onRemovedFiles?(removedURLs)
         }
 
-        if !newURLs.isEmpty {
+        if !newFileNames.isEmpty {
+            let newURLs = newFileNames.map { watchedURL.appendingPathComponent($0) }
             onNewFiles?(newURLs)
         }
     }

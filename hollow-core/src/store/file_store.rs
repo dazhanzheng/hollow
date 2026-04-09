@@ -117,12 +117,41 @@ impl FileStore {
     }
 
     pub fn inode_exists(conn: &Connection, inode: i64) -> Result<bool, HollowError> {
+        // Only count non-missing files — missing files' inodes are stale
         let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM files WHERE inode = ?1",
+            "SELECT COUNT(*) FROM files WHERE inode = ?1 AND status != 'missing'",
             rusqlite::params![inode],
             |row| row.get(0),
         )?;
         Ok(count > 0)
+    }
+
+    pub fn path_status(conn: &Connection, path: &str) -> Result<Option<String>, HollowError> {
+        let mut stmt = conn.prepare(
+            "SELECT status FROM files WHERE current_path = ?1",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![path])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(row.get(0)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn delete_by_path(conn: &Connection, path: &str) -> Result<(), HollowError> {
+        conn.execute(
+            "DELETE FROM files WHERE current_path = ?1",
+            rusqlite::params![path],
+        )?;
+        Ok(())
+    }
+
+    pub fn mark_missing_by_path(conn: &Connection, path: &str) -> Result<(), HollowError> {
+        conn.execute(
+            "UPDATE files SET status = 'missing', inode = NULL WHERE current_path = ?1",
+            rusqlite::params![path],
+        )?;
+        Ok(())
     }
 
     pub fn update_hash(conn: &Connection, id: &str, hash: &str) -> Result<(), HollowError> {

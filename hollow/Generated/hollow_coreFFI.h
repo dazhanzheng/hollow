@@ -293,6 +293,11 @@ RustBuffer uniffi_hollow_core_fn_method_hollowcore_list_files(uint64_t ptr, uint
 void uniffi_hollow_core_fn_method_hollowcore_mark_indexed(uint64_t ptr, RustBuffer file_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_MARK_MISSING
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_MARK_MISSING
+void uniffi_hollow_core_fn_method_hollowcore_mark_missing(uint64_t ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_PATH_EXISTS
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_PATH_EXISTS
 int8_t uniffi_hollow_core_fn_method_hollowcore_path_exists(uint64_t ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
@@ -597,6 +602,12 @@ uint16_t uniffi_hollow_core_checksum_method_hollowcore_list_files(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_MARK_INDEXED
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_MARK_INDEXED
 uint16_t uniffi_hollow_core_checksum_method_hollowcore_mark_indexed(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_MARK_MISSING
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_MARK_MISSING
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_mark_missing(void
     
 );
 #endif

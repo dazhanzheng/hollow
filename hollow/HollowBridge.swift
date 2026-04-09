@@ -89,4 +89,9 @@ final class HollowBridge: @unchecked Sendable {
         guard let core else { return false }
         return (try? core.pathExists(path: path)) ?? false
     }
+
+    func markMissing(path: String) {
+        guard let core else { return }
+        try? core.markMissing(path: path)
+    }
 }
