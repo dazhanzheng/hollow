@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage("enableFullHash") private var enableFullHash = false
+    @AppStorage("debugMode") private var debugMode = false
     @State private var isComputingFullHash = false
     @State private var fullHashProgress: String?
 
@@ -52,6 +53,13 @@ struct SettingsView: View {
                         }
                     }
                 }
+            }
+        }
+            Section("Developer") {
+                Toggle("Debug Mode", isOn: $debugMode)
+                Text("Shows Debug menu in the menu bar with database browser.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
