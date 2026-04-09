@@ -12,5 +12,9 @@ struct hollowApp: App {
                     ingestionService.start()
                 }
         }
+
+        Settings {
+            SettingsView()
+        }
     }
 }
