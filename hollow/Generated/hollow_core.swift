@@ -520,11 +520,33 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
     
     func checkDuplicate(hash: String) throws  -> Bool
     
+    /**
+     * Heavy operation: reads entire file in 8KB chunks, computes SHA-256,
+     * updates the DB record. Call this from a background thread.
+     */
+    func computeHash(fileId: String) throws  -> String
+    
     func getFile(id: String) throws  -> FileRecord?
     
+    /**
+     * Returns IDs of all files with status="pending" (not yet fully processed).
+     */
+    func getPendingIds() throws  -> [String]
+    
+    /**
+     * Fast intake: only reads fs metadata, no file content read.
+     * Returns immediately with hash="", status="pending".
+     */
     func ingestFile(filePath: String) throws  -> FileRecord
     
     func listFiles(limit: UInt32, offset: UInt32) throws  -> [FileRecord]
+    
+    /**
+     * Mark a file as fully processed.
+     */
+    func markIndexed(fileId: String) throws 
+    
+    func pathExists(path: String) throws  -> Bool
     
 }
 open class HollowCore: HollowCoreProtocol, @unchecked Sendable {
@@ -597,6 +619,19 @@ open func checkDuplicate(hash: String)throws  -> Bool  {
 })
 }
     
+    /**
+     * Heavy operation: reads entire file in 8KB chunks, computes SHA-256,
+     * updates the DB record. Call this from a background thread.
+     */
+open func computeHash(fileId: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_compute_hash(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(fileId),$0
+    )
+})
+}
+    
 open func getFile(id: String)throws  -> FileRecord?  {
     return try  FfiConverterOptionTypeFileRecord.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
     uniffi_hollow_core_fn_method_hollowcore_get_file(
@@ -606,6 +641,21 @@ open func getFile(id: String)throws  -> FileRecord?  {
 })
 }
     
+    /**
+     * Returns IDs of all files with status="pending" (not yet fully processed).
+     */
+open func getPendingIds()throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_get_pending_ids(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
+     * Fast intake: only reads fs metadata, no file content read.
+     * Returns immediately with hash="", status="pending".
+     */
 open func ingestFile(filePath: String)throws  -> FileRecord  {
     return try  FfiConverterTypeFileRecord_lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
     uniffi_hollow_core_fn_method_hollowcore_ingest_file(
@@ -621,6 +671,26 @@ open func listFiles(limit: UInt32, offset: UInt32)throws  -> [FileRecord]  {
             self.uniffiCloneHandle(),
         FfiConverterUInt32.lower(limit),
         FfiConverterUInt32.lower(offset),$0
+    )
+})
+}
+    
+    /**
+     * Mark a file as fully processed.
+     */
+open func markIndexed(fileId: String)throws   {try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_mark_indexed(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(fileId),$0
+    )
+}
+}
+    
+open func pathExists(path: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_path_exists(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(path),$0
     )
 })
 }
@@ -676,6 +746,7 @@ public func FfiConverterTypeHollowCore_lower(_ value: HollowCore) -> UInt64 {
 public struct FileRecord: Equatable, Hashable {
     public var id: String
     public var hash: String
+    public var inode: Int64?
     public var currentPath: String
     public var originalPath: String
     public var fileName: String
@@ -689,9 +760,10 @@ public struct FileRecord: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, hash: String, currentPath: String, originalPath: String, fileName: String, `extension`: String?, mimeType: String?, sizeBytes: Int64, createdAt: String, modifiedAt: String, ingestedAt: String, status: String) {
+    public init(id: String, hash: String, inode: Int64?, currentPath: String, originalPath: String, fileName: String, `extension`: String?, mimeType: String?, sizeBytes: Int64, createdAt: String, modifiedAt: String, ingestedAt: String, status: String) {
         self.id = id
         self.hash = hash
+        self.inode = inode
         self.currentPath = currentPath
         self.originalPath = originalPath
         self.fileName = fileName
@@ -722,6 +794,7 @@ public struct FfiConverterTypeFileRecord: FfiConverterRustBuffer {
             try FileRecord(
                 id: FfiConverterString.read(from: &buf), 
                 hash: FfiConverterString.read(from: &buf), 
+                inode: FfiConverterOptionInt64.read(from: &buf), 
                 currentPath: FfiConverterString.read(from: &buf), 
                 originalPath: FfiConverterString.read(from: &buf), 
                 fileName: FfiConverterString.read(from: &buf), 
@@ -738,6 +811,7 @@ public struct FfiConverterTypeFileRecord: FfiConverterRustBuffer {
     public static func write(_ value: FileRecord, into buf: inout [UInt8]) {
         FfiConverterString.write(value.id, into: &buf)
         FfiConverterString.write(value.hash, into: &buf)
+        FfiConverterOptionInt64.write(value.inode, into: &buf)
         FfiConverterString.write(value.currentPath, into: &buf)
         FfiConverterString.write(value.originalPath, into: &buf)
         FfiConverterString.write(value.fileName, into: &buf)
@@ -873,6 +947,30 @@ public func FfiConverterTypeHollowError_lower(_ value: HollowError) -> RustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionInt64: FfiConverterRustBuffer {
+    typealias SwiftType = Int64?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterInt64.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterInt64.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
     typealias SwiftType = String?
 
@@ -921,6 +1019,31 @@ fileprivate struct FfiConverterOptionTypeFileRecord: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFileRecord: FfiConverterRustBuffer {
     typealias SwiftType = [FileRecord]
 
@@ -961,13 +1084,25 @@ private let initializationResult: InitializationResult = {
     if (uniffi_hollow_core_checksum_method_hollowcore_check_duplicate() != 10506) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_hollow_core_checksum_method_hollowcore_compute_hash() != 34279) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_hollow_core_checksum_method_hollowcore_get_file() != 29901) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_hollow_core_checksum_method_hollowcore_ingest_file() != 50238) {
+    if (uniffi_hollow_core_checksum_method_hollowcore_get_pending_ids() != 17365) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_ingest_file() != 36442) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_list_files() != 25763) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_mark_indexed() != 20550) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_path_exists() != 15088) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_constructor_hollowcore_new() != 43294) {
