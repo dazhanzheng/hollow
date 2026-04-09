@@ -1,4 +1,5 @@
 // hollow-core/src/lib.rs
+mod db;
 mod error;
 
 pub use error::HollowError;
