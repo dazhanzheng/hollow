@@ -6,6 +6,11 @@ import os
 
 /// Runs metadata intake (fast: filesystem metadata + quick_hash).
 /// Dispatched on IngestionService.metadataQueue.
+///
+/// IMPORTANT: main() is synchronous. As soon as it returns, the OperationQueue
+/// releases the operation, so any async callback that captures `self` weakly
+/// will see nil and bail out. Capture the needed values (service, path, result)
+/// into local bindings and let the Task hold them directly.
 final class MetadataIntakeOperation: Operation, @unchecked Sendable {
     let path: String
     private weak var service: IngestionService?
@@ -19,17 +24,19 @@ final class MetadataIntakeOperation: Operation, @unchecked Sendable {
     override func main() {
         guard !isCancelled else { return }
         let result = HollowBridge.shared.ingestFile(path: path)
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            MainActor.assumeIsolated {
-                self.service?.handleMetadataIntakeResult(result, path: self.path)
-            }
+        // Promote weak → strong local. The Task closure captures these locals,
+        // not `self`, so it survives the operation being released after main().
+        let capturedPath = path
+        let capturedService = service
+        Task { @MainActor in
+            capturedService?.handleMetadataIntakeResult(result, path: capturedPath)
         }
     }
 }
 
 /// Runs content extraction for a file (slow: read + decode + zstd compress + DB write).
 /// Dispatched on IngestionService.contentQueue.
+/// See MetadataIntakeOperation above for the capture-locals rationale.
 final class ContentExtractionOperation: Operation, @unchecked Sendable {
     let fileId: String
     private weak var service: IngestionService?
@@ -43,11 +50,10 @@ final class ContentExtractionOperation: Operation, @unchecked Sendable {
     override func main() {
         guard !isCancelled else { return }
         let result = HollowBridge.shared.extractContent(fileId: fileId)
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            MainActor.assumeIsolated {
-                self.service?.handleContentExtractionResult(result, fileId: self.fileId)
-            }
+        let capturedFileId = fileId
+        let capturedService = service
+        Task { @MainActor in
+            capturedService?.handleContentExtractionResult(result, fileId: capturedFileId)
         }
     }
 }
