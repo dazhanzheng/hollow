@@ -68,7 +68,7 @@ impl ContentPipeline {
             Some(e) => e,
             None => {
                 return ExtractionOutcome {
-                    status: "extract_failed".to_string(),
+                    status: "unsupported".to_string(),
                     extractor_name: None,
                     body_text: None,
                     encoding: None,
@@ -161,7 +161,7 @@ mod tests {
         let p = tmp("fake.txt", &png);
         let outcome = pipeline.process(&p, Some("txt"));
         assert!(outcome.extension_mismatch);
-        assert_eq!(outcome.status, "extract_failed"); // no image extractor
+        assert_eq!(outcome.status, "unsupported"); // no image extractor
     }
 
     #[test]
@@ -169,7 +169,7 @@ mod tests {
         let pipeline = ContentPipeline::new(default_registry());
         let p = tmp("blob.bin", &[0xFF, 0xFE, 0x00, 0x01]);
         let outcome = pipeline.process(&p, Some("bin"));
-        assert_eq!(outcome.status, "extract_failed");
+        assert_eq!(outcome.status, "unsupported");
         assert!(outcome.error.is_some());
     }
 }

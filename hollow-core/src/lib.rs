@@ -253,7 +253,24 @@ impl HollowCore {
             (record.current_path, record.extension)
         };
 
+        // Step 1.5: File may have been deleted between ingestion and extraction.
+        // Mark missing and return rather than producing a bogus extract_failed.
         let path = Path::new(&current_path);
+        if !path.exists() {
+            let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+            FileStore::mark_missing_by_path(&db.conn, &current_path)?;
+            info!("File vanished before extraction: {}", current_path);
+            return Ok(ExtractContentResult {
+                file_id,
+                status: "missing".to_string(),
+                extractor_name: None,
+                detected_mime: "application/octet-stream".to_string(),
+                extension_mismatch: false,
+                body_text_bytes: 0,
+                error: Some("file was removed before extraction could start".to_string()),
+            });
+        }
+
         let pipeline = ContentPipeline::new(default_registry());
         let outcome = pipeline.process(path, original_extension.as_deref());
 
@@ -298,38 +315,48 @@ impl HollowCore {
             outcome.extension_mismatch,
         )?;
 
-        if outcome.status == "indexed" {
-            let compressed = compressed_body.expect("compressed_body is Some when status is indexed");
-            FileContentStore::upsert(
-                &db.conn,
-                &file_id,
-                &compressed,
-                body_text_bytes as i64,
-                outcome.encoding.as_deref(),
-                outcome.extractor_name.as_deref().unwrap_or("Unknown"),
-                &extracted_at,
-            )?;
-            FileStore::update_status(&db.conn, &file_id, "indexed")?;
-            info!(
-                "Extracted content: {} ({} bytes, {})",
-                file_id,
-                body_text_bytes,
-                outcome.extractor_name.as_deref().unwrap_or("?")
-            );
-        } else {
-            FileContentStore::upsert_error(
-                &db.conn,
-                &file_id,
-                outcome.error.as_deref().unwrap_or("unknown error"),
-                outcome.extractor_name.as_deref(),
-                &extracted_at,
-            )?;
-            FileStore::update_status(&db.conn, &file_id, "extract_failed")?;
-            info!(
-                "Extraction failed: {} ({})",
-                file_id,
-                outcome.error.as_deref().unwrap_or("?")
-            );
+        match outcome.status.as_str() {
+            "indexed" => {
+                let compressed = compressed_body.expect("compressed_body is Some when status is indexed");
+                FileContentStore::upsert(
+                    &db.conn,
+                    &file_id,
+                    &compressed,
+                    body_text_bytes as i64,
+                    outcome.encoding.as_deref(),
+                    outcome.extractor_name.as_deref().unwrap_or("Unknown"),
+                    &extracted_at,
+                )?;
+                FileStore::update_status(&db.conn, &file_id, "indexed")?;
+                info!(
+                    "Extracted content: {} ({} bytes, {})",
+                    file_id,
+                    body_text_bytes,
+                    outcome.extractor_name.as_deref().unwrap_or("?")
+                );
+            }
+            "unsupported" => {
+                // No extractor available — not a failure, just a format we can't process yet.
+                // Don't write to file_content; just flip status and update detected_mime.
+                FileStore::update_status(&db.conn, &file_id, "unsupported")?;
+                info!("No extractor for {}: {}", file_id, outcome.detected_mime);
+            }
+            _ => {
+                // "extract_failed" — real failure, store error
+                FileContentStore::upsert_error(
+                    &db.conn,
+                    &file_id,
+                    outcome.error.as_deref().unwrap_or("unknown error"),
+                    outcome.extractor_name.as_deref(),
+                    &extracted_at,
+                )?;
+                FileStore::update_status(&db.conn, &file_id, "extract_failed")?;
+                info!(
+                    "Extraction failed: {} ({})",
+                    file_id,
+                    outcome.error.as_deref().unwrap_or("?")
+                );
+            }
         }
 
         Ok(ExtractContentResult {
@@ -644,11 +671,11 @@ mod tests {
         let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
         let result = core.extract_content(record.id.clone()).unwrap();
 
-        assert_eq!(result.status, "extract_failed");
+        assert_eq!(result.status, "unsupported");
         assert!(result.error.is_some());
 
         let updated = core.get_file(record.id).unwrap().unwrap();
-        assert_eq!(updated.status, "extract_failed");
+        assert_eq!(updated.status, "unsupported");
 
         cleanup(&[&path, &path.parent().unwrap()]);
     }
@@ -760,5 +787,41 @@ mod tests {
         assert_eq!(pending.len(), 2);
 
         cleanup(&[&dir]);
+    }
+
+    #[test]
+    fn test_extract_content_missing_file_marks_missing() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_vanish", "ghost.txt", b"boo");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        // Delete the file on disk before extraction
+        std::fs::remove_file(&path).unwrap();
+
+        let result = core.extract_content(record.id.clone()).unwrap();
+        assert_eq!(result.status, "missing");
+
+        let fetched = core.get_file(record.id).unwrap().unwrap();
+        assert_eq!(fetched.status, "missing");
+
+        // Cleanup parent dir
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn test_extract_content_unsupported_format() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        // JPEG magic bytes: FF D8 FF E0 ...
+        let jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46];
+        let path = make_temp_file("hollow_t_unsupp", "photo.jpg", &jpeg);
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        let result = core.extract_content(record.id.clone()).unwrap();
+        assert_eq!(result.status, "unsupported");
+
+        let fetched = core.get_file(record.id).unwrap().unwrap();
+        assert_eq!(fetched.status, "unsupported");
+
+        cleanup(&[&path, &path.parent().unwrap()]);
     }
 }
