@@ -599,6 +599,12 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
     
     func pathExists(path: String) throws  -> Bool
     
+    /**
+     * Reclaim files stuck in the `extracting` state (crashed mid-extraction).
+     * Flips them back to pending so the next resume scan picks them up.
+     */
+    func reclaimExtracting() throws  -> UInt32
+    
 }
 open class HollowCore: HollowCoreProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -828,6 +834,18 @@ open func pathExists(path: String)throws  -> Bool  {
     uniffi_hollow_core_fn_method_hollowcore_path_exists(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(path),$0
+    )
+})
+}
+    
+    /**
+     * Reclaim files stuck in the `extracting` state (crashed mid-extraction).
+     * Flips them back to pending so the next resume scan picks them up.
+     */
+open func reclaimExtracting()throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_reclaim_extracting(
+            self.uniffiCloneHandle(),$0
     )
 })
 }
@@ -1522,6 +1540,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_path_exists() != 15088) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_reclaim_extracting() != 1627) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_constructor_hollowcore_new() != 43294) {
