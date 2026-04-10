@@ -1,13 +1,24 @@
 import SwiftUI
 import OSLog
 
+/// Lightweight value type extracted from OSLogEntryLog so we don't hold
+/// heavyweight system objects in the view's state.
+private struct LogRow: Identifiable, Equatable {
+    let id: Int
+    let date: Date
+    let level: OSLogEntryLog.Level
+    let category: String
+    let message: String
+}
+
 struct LogViewerView: View {
-    @State private var entries: [OSLogEntryLog] = []
+    @State private var rows: [LogRow] = []
     @State private var selectedTab = 0       // 0=Swift, 1=Rust
     @State private var filterLevel: OSLogEntryLog.Level? = nil
     @State private var searchText = ""
     @State private var autoRefresh = true
     @State private var refreshTimer: Timer?
+    @State private var isLoading = false
 
     private let subsystem = "com.syncpulse.hollow"
     private let rustCategory = "RustCore"
@@ -41,12 +52,18 @@ struct LogViewerView: View {
                 Toggle("Auto-refresh", isOn: $autoRefresh)
                     .toggleStyle(.switch)
 
-                Button(action: refresh) {
+                Button(action: refreshAsync) {
                     Image(systemName: "arrow.clockwise")
                 }
                 .help("Refresh")
+                .disabled(isLoading)
 
-                Text("\(filteredEntries.count) entries")
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+
+                Text("\(filteredRows.count) entries")
                     .foregroundStyle(.secondary)
                     .font(.caption)
             }
@@ -56,38 +73,37 @@ struct LogViewerView: View {
 
             // Log list
             ScrollViewReader { proxy in
-                List(filteredEntries, id: \.self) { entry in
+                List(filteredRows) { row in
                     HStack(alignment: .top, spacing: 8) {
-                        Text(formatTime(entry.date))
+                        Text(formatTime(row.date))
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .frame(width: 80, alignment: .leading)
 
-                        levelBadge(entry.level)
+                        levelBadge(row.level)
                             .frame(width: 50)
 
-                        Text(entry.category)
+                        Text(row.category)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(width: 80, alignment: .leading)
 
-                        Text(entry.composedMessage)
+                        Text(row.message)
                             .font(.system(.caption, design: .monospaced))
                             .lineLimit(nil)
                             .textSelection(.enabled)
                     }
-                    .id(entry)
                 }
-                .onChange(of: filteredEntries.count) {
-                    if autoRefresh, let last = filteredEntries.last {
-                        proxy.scrollTo(last, anchor: .bottom)
+                .onChange(of: filteredRows.count) {
+                    if autoRefresh, let last = filteredRows.last {
+                        proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
             }
         }
         .frame(minWidth: 700, minHeight: 400)
         .onAppear {
-            refresh()
+            refreshAsync()
             startAutoRefresh()
         }
         .onDisappear {
@@ -98,26 +114,23 @@ struct LogViewerView: View {
         }
     }
 
-    private var filteredEntries: [OSLogEntryLog] {
-        var result = entries
+    private var filteredRows: [LogRow] {
+        var result = rows
 
-        // Tab filter: Swift (non-RustCore) vs Rust (RustCore only)
         if selectedTab == 0 {
             result = result.filter { $0.category != rustCategory }
         } else {
             result = result.filter { $0.category == rustCategory }
         }
 
-        // Level filter
         if let level = filterLevel {
             result = result.filter { $0.level == level }
         }
 
-        // Search filter
         if !searchText.isEmpty {
             let query = searchText.lowercased()
             result = result.filter {
-                $0.composedMessage.lowercased().contains(query) ||
+                $0.message.lowercased().contains(query) ||
                 $0.category.lowercased().contains(query)
             }
         }
@@ -125,21 +138,48 @@ struct LogViewerView: View {
         return result
     }
 
-    private func refresh() {
+    /// Read OSLogStore off the main thread, then update state on main.
+    private func refreshAsync() {
+        guard !isLoading else { return }
+        isLoading = true
+        let sub = subsystem
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fetched = Self.fetchLogs(subsystem: sub)
+            DispatchQueue.main.async {
+                rows = fetched
+                isLoading = false
+            }
+        }
+    }
+
+    private static func fetchLogs(subsystem: String) -> [LogRow] {
         do {
             let store = try OSLogStore(scope: .currentProcessIdentifier)
             let position = store.position(date: Date().addingTimeInterval(-3600))
             let predicate = NSPredicate(format: "subsystem == %@", subsystem)
             let rawEntries = try store.getEntries(at: position, matching: predicate)
-            entries = rawEntries.compactMap { $0 as? OSLogEntryLog }
+            var result: [LogRow] = []
+            var idx = 0
+            for entry in rawEntries {
+                guard let log = entry as? OSLogEntryLog else { continue }
+                result.append(LogRow(
+                    id: idx,
+                    date: log.date,
+                    level: log.level,
+                    category: log.category,
+                    message: log.composedMessage
+                ))
+                idx += 1
+            }
+            return result
         } catch {
-            HollowLogger.app.error("Failed to read OSLogStore: \(error)")
+            return []
         }
     }
 
     private func startAutoRefresh() {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            refresh()
+            refreshAsync()
         }
     }
 
