@@ -96,14 +96,6 @@ impl FileStore {
         Ok(())
     }
 
-    pub fn delete_file(conn: &Connection, id: &str) -> Result<(), HollowError> {
-        let rows_deleted = conn.execute("DELETE FROM files WHERE id = ?1", rusqlite::params![id])?;
-        if rows_deleted == 0 {
-            return Err(HollowError::FileNotFound(id.to_string()));
-        }
-        Ok(())
-    }
-
     pub fn check_duplicate(conn: &Connection, hash: &str) -> Result<bool, HollowError> {
         let count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM files WHERE hash = ?1",
@@ -195,16 +187,6 @@ impl FileStore {
             return Err(HollowError::FileNotFound(id.to_string()));
         }
         Ok(())
-    }
-
-    pub fn get_quick_hash(conn: &Connection, id: &str) -> Result<Option<String>, HollowError> {
-        let mut stmt = conn.prepare("SELECT quick_hash FROM files WHERE id = ?1")?;
-        let mut rows = stmt.query(rusqlite::params![id])?;
-        if let Some(row) = rows.next()? {
-            Ok(Some(row.get(0)?))
-        } else {
-            Ok(None)
-        }
     }
 
     pub fn update_quick_hash(conn: &Connection, id: &str, quick_hash: &str) -> Result<(), HollowError> {
@@ -322,18 +304,6 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_file() {
-        let db = test_db();
-        let record = sample_record();
-        FileStore::insert_file(&db.conn, record.clone()).unwrap();
-
-        FileStore::delete_file(&db.conn, &record.id).unwrap();
-
-        let fetched = FileStore::get_file(&db.conn, &record.id).unwrap();
-        assert!(fetched.is_none());
-    }
-
-    #[test]
     fn test_check_duplicate() {
         let db = test_db();
         let record = sample_record();
@@ -371,16 +341,6 @@ mod tests {
             .unwrap();
         assert_eq!(mime.as_deref(), Some("image/png"));
         assert_eq!(mismatch, 1);
-    }
-
-    #[test]
-    fn test_get_quick_hash_method() {
-        let db = test_db();
-        let record = sample_record();
-        FileStore::insert_file(&db.conn, record.clone()).unwrap();
-
-        let qh = FileStore::get_quick_hash(&db.conn, &record.id).unwrap();
-        assert_eq!(qh.as_deref(), Some("abcd1234"));
     }
 
     #[test]

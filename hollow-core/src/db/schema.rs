@@ -5,7 +5,6 @@
 // by editing MIGRATION_V1 directly and deleting any local dev databases.
 // Once we ship v1.0, we will freeze this file and start writing ALTER-based
 // migrations (v2, v3, ...) to protect real user data.
-pub const SCHEMA_VERSION: u32 = 1;
 
 const MIGRATION_V1: &str = "
 CREATE TABLE files (
@@ -86,7 +85,7 @@ mod tests {
         conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
         migrate(&conn).unwrap();
         let version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, SCHEMA_VERSION);
+        assert_eq!(version, 1);
     }
 
     #[test]
@@ -96,7 +95,7 @@ mod tests {
         migrate(&conn).unwrap();
         migrate(&conn).unwrap();
         let version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, SCHEMA_VERSION);
+        assert_eq!(version, 1);
     }
 
     #[test]

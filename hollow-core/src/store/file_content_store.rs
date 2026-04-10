@@ -60,30 +60,6 @@ impl FileContentStore {
         Ok(())
     }
 
-    /// Get decompressed body text, if any.
-    pub fn get_body_text(
-        conn: &Connection,
-        file_id: &str,
-    ) -> Result<Option<String>, HollowError> {
-        let mut stmt = conn
-            .prepare("SELECT body_text_compressed FROM file_content WHERE file_id = ?1")?;
-        let mut rows = stmt.query(rusqlite::params![file_id])?;
-        if let Some(row) = rows.next()? {
-            let compressed: Option<Vec<u8>> = row.get(0)?;
-            match compressed {
-                Some(bytes) if !bytes.is_empty() => {
-                    let decoded = zstd::decode_all(&bytes[..])
-                        .map_err(|e| HollowError::Database(format!("zstd decode: {}", e)))?;
-                    let text = String::from_utf8(decoded)
-                        .map_err(|e| HollowError::Database(format!("utf8: {}", e)))?;
-                    Ok(Some(text))
-                }
-                _ => Ok(None),
-            }
-        } else {
-            Ok(None)
-        }
-    }
 }
 
 #[cfg(test)]
@@ -119,6 +95,18 @@ mod tests {
         FileStore::insert_file(&db.conn, record).unwrap();
     }
 
+    /// Helper: read back and decompress body_text for assertions.
+    fn read_body_text(db: &Database, file_id: &str) -> Option<String> {
+        let compressed: Option<Vec<u8>> = db.conn.query_row(
+            "SELECT body_text_compressed FROM file_content WHERE file_id = ?1",
+            rusqlite::params![file_id],
+            |r| r.get(0),
+        ).ok()?;
+        let bytes = compressed?;
+        let decoded = zstd::decode_all(&bytes[..]).unwrap();
+        Some(String::from_utf8(decoded).unwrap())
+    }
+
     #[test]
     fn test_upsert_and_get() {
         let db = test_db();
@@ -137,8 +125,7 @@ mod tests {
         )
         .unwrap();
 
-        let got = FileContentStore::get_body_text(&db.conn, "f1").unwrap();
-        assert_eq!(got.as_deref(), Some("hello world"));
+        assert_eq!(read_body_text(&db, "f1").as_deref(), Some("hello world"));
     }
 
     #[test]
@@ -152,8 +139,7 @@ mod tests {
         let c2 = zstd::encode_all(b"second".as_ref(), 3).unwrap();
         FileContentStore::upsert(&db.conn, "f2", &c2, 6, None, "PlainText", "t2").unwrap();
 
-        let got = FileContentStore::get_body_text(&db.conn, "f2").unwrap();
-        assert_eq!(got.as_deref(), Some("second"));
+        assert_eq!(read_body_text(&db, "f2").as_deref(), Some("second"));
     }
 
     #[test]
@@ -180,12 +166,5 @@ mod tests {
             .unwrap();
         assert_eq!(row.0.as_deref(), Some("file too large"));
         assert!(row.1.is_none());
-    }
-
-    #[test]
-    fn test_get_body_text_missing_returns_none() {
-        let db = test_db();
-        let got = FileContentStore::get_body_text(&db.conn, "nope").unwrap();
-        assert!(got.is_none());
     }
 }

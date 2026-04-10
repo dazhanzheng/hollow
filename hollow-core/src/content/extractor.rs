@@ -14,14 +14,10 @@ pub struct ExtractionResult {
 pub enum ExtractionError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("unsupported format: {0}")]
-    UnsupportedFormat(String),
     #[error("encoding detection failed")]
     EncodingDetectionFailed,
     #[error("file too large: {size} bytes (limit: {limit})")]
     FileTooLarge { size: u64, limit: u64 },
-    #[error("extraction failed: {0}")]
-    Other(String),
 }
 
 pub trait Extractor: Send + Sync {
