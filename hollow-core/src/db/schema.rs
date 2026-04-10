@@ -1,4 +1,4 @@
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 const MIGRATION_V1: &str = "
 CREATE TABLE files (
@@ -59,6 +59,20 @@ ALTER TABLE files ADD COLUMN quick_hash TEXT NOT NULL DEFAULT '';
 CREATE INDEX idx_files_quick_hash ON files(quick_hash);
 ";
 
+const MIGRATION_V4: &str = "
+ALTER TABLE file_content ADD COLUMN body_text_compressed BLOB;
+ALTER TABLE file_content ADD COLUMN body_text_bytes INTEGER;
+ALTER TABLE file_content ADD COLUMN encoding TEXT;
+ALTER TABLE file_content ADD COLUMN extracted_at TEXT;
+ALTER TABLE file_content ADD COLUMN extractor_name TEXT;
+ALTER TABLE file_content ADD COLUMN extract_error TEXT;
+
+ALTER TABLE files ADD COLUMN detected_mime TEXT;
+ALTER TABLE files ADD COLUMN extension_mismatch INTEGER NOT NULL DEFAULT 0;
+
+UPDATE files SET status = 'pending' WHERE status = 'indexed';
+";
+
 pub fn migrate(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     let current_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
 
@@ -75,6 +89,11 @@ pub fn migrate(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     if current_version < 3 {
         conn.execute_batch(MIGRATION_V3)?;
         conn.pragma_update(None, "user_version", 3)?;
+    }
+
+    if current_version < 4 {
+        conn.execute_batch(MIGRATION_V4)?;
+        conn.pragma_update(None, "user_version", 4)?;
     }
 
     Ok(())
@@ -119,5 +138,67 @@ mod tests {
         assert!(tables.contains(&"file_metadata".to_string()));
         assert!(tables.contains(&"file_content".to_string()));
         assert!(tables.contains(&"operations_log".to_string()));
+    }
+
+    #[test]
+    fn test_migration_v4_adds_content_columns() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        migrate(&conn).unwrap();
+
+        // file_content new columns
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(file_content)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(cols.contains(&"body_text_compressed".to_string()));
+        assert!(cols.contains(&"body_text_bytes".to_string()));
+        assert!(cols.contains(&"encoding".to_string()));
+        assert!(cols.contains(&"extracted_at".to_string()));
+        assert!(cols.contains(&"extractor_name".to_string()));
+        assert!(cols.contains(&"extract_error".to_string()));
+
+        // files new columns
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(files)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(cols.contains(&"detected_mime".to_string()));
+        assert!(cols.contains(&"extension_mismatch".to_string()));
+    }
+
+    #[test]
+    fn test_migration_v4_resets_indexed_to_pending() {
+        // Simulate an existing v3 DB with indexed files, then run v4
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+
+        // Apply v1..v3 manually
+        conn.execute_batch(MIGRATION_V1).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        conn.execute_batch(MIGRATION_V2).unwrap();
+        conn.pragma_update(None, "user_version", 2).unwrap();
+        conn.execute_batch(MIGRATION_V3).unwrap();
+        conn.pragma_update(None, "user_version", 3).unwrap();
+
+        // Insert a file with status indexed
+        conn.execute(
+            "INSERT INTO files (id, hash, quick_hash, current_path, original_path, file_name, size_bytes, created_at, modified_at, ingested_at, status) VALUES ('a', '', '', '/a.txt', '/a.txt', 'a.txt', 0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'indexed')",
+            [],
+        ).unwrap();
+
+        // Run full migrate (should apply v4)
+        migrate(&conn).unwrap();
+
+        let status: String = conn
+            .query_row("SELECT status FROM files WHERE id = 'a'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(status, "pending");
     }
 }
