@@ -3819,6 +3819,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = B60D110D2F8739A000FC5B8D /* Build configuration list for PBXNativeTarget "hollow" */;
 			buildPhases = (
+				B60DC4R601CARG0000000001 /* Build hollow-core (Rust) */,
 				B60D10E82F87399F00FC5B8D /* Sources */,
 				B60D10E92F87399F00FC5B8D /* Frameworks */,
 				B60D10EA2F87399F00FC5B8D /* Resources */,
@@ -3952,6 +3953,29 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		B60DC4R601CARG0000000001 /* Build hollow-core (Rust) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build hollow-core (Rust)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/target/aarch64-apple-darwin/debug/libhollow_core.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nexport PATH=\"$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"\ncd \"$SRCROOT\"\ncargo build -p hollow-core --target aarch64-apple-darwin\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		B60D10E82F87399F00FC5B8D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -4027,7 +4051,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -4090,7 +4114,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
