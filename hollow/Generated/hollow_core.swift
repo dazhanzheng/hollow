@@ -549,6 +549,11 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
      */
     func extractContent(fileId: String) throws  -> ExtractContentResult
     
+    /**
+     * Look up a file's UUID by its current path.
+     */
+    func fileIdForPath(path: String) throws  -> String?
+    
     func getFile(id: String) throws  -> FileRecord?
     
     func getLogs(sinceId: UInt64)  -> [LogEntry]
@@ -693,6 +698,18 @@ open func extractContent(fileId: String)throws  -> ExtractContentResult  {
     uniffi_hollow_core_fn_method_hollowcore_extract_content(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(fileId),$0
+    )
+})
+}
+    
+    /**
+     * Look up a file's UUID by its current path.
+     */
+open func fileIdForPath(path: String)throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_file_id_for_path(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(path),$0
     )
 })
 }
@@ -1461,6 +1478,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_extract_content() != 25782) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_file_id_for_path() != 36005) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_get_file() != 29901) {
