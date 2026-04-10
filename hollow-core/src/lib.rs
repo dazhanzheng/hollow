@@ -243,6 +243,19 @@ impl HollowCore {
         let outcome = pipeline.process(path, original_extension.as_deref());
 
         let extracted_at = iso8601_now();
+
+        // Step 3 (lockless): if indexed, compress body text before reacquiring the mutex.
+        // This keeps CPU-intensive zstd work outside any critical section.
+        let (body_text_bytes, compressed_body): (u64, Option<Vec<u8>>) = if outcome.status == "indexed" {
+            let body_text = outcome.body_text.clone().unwrap_or_default();
+            let bytes = body_text.len() as u64;
+            let compressed = zstd::encode_all(body_text.as_bytes(), 3)
+                .map_err(|e| HollowError::Database(format!("zstd encode: {}", e)))?;
+            (bytes, Some(compressed))
+        } else {
+            (0, None)
+        };
+
         let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
 
         // Guard: if the file was marked missing between our two lock acquisitions, do not overwrite.
@@ -270,12 +283,8 @@ impl HollowCore {
             outcome.extension_mismatch,
         )?;
 
-        let body_text_bytes: u64;
         if outcome.status == "indexed" {
-            let body_text = outcome.body_text.clone().unwrap_or_default();
-            body_text_bytes = body_text.len() as u64;
-            let compressed = zstd::encode_all(body_text.as_bytes(), 3)
-                .map_err(|e| HollowError::Database(format!("zstd encode: {}", e)))?;
+            let compressed = compressed_body.expect("compressed_body is Some when status is indexed");
             FileContentStore::upsert(
                 &db.conn,
                 &file_id,
@@ -293,7 +302,6 @@ impl HollowCore {
                 outcome.extractor_name.as_deref().unwrap_or("?")
             );
         } else {
-            body_text_bytes = 0;
             FileContentStore::upsert_error(
                 &db.conn,
                 &file_id,
