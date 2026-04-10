@@ -71,6 +71,7 @@ struct hollowApp: App {
 
         Window("Database Browser", id: "database-browser") {
             DatabaseBrowserView()
+                .environment(ingestionService)
                 .environment(\.locale, activeLocale)
         }
 

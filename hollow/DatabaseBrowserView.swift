@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct DatabaseBrowserView: View {
+    @Environment(IngestionService.self) private var ingestion
     @State private var files: [FileRecord] = []
     @State private var selectedFileId: String?
     @State private var searchText = ""
@@ -8,6 +9,22 @@ struct DatabaseBrowserView: View {
     private var selectedFile: FileRecord? {
         guard let id = selectedFileId else { return nil }
         return files.first { $0.id == id }
+    }
+
+    /// Counts of each status across the current snapshot, for the summary bar.
+    private var statusCounts: [(String, Int)] {
+        var counts: [String: Int] = [:]
+        for f in files { counts[f.status, default: 0] += 1 }
+        // Canonical display order; unknown statuses appended at the end.
+        let order = ["indexed", "pending", "extracting", "unsupported", "extract_failed", "missing"]
+        var result: [(String, Int)] = []
+        for status in order {
+            if let n = counts[status], n > 0 { result.append((status, n)) }
+        }
+        for (status, n) in counts where !order.contains(status) {
+            result.append((status, n))
+        }
+        return result
     }
 
     var body: some View {
@@ -51,6 +68,9 @@ struct DatabaseBrowserView: View {
                 .padding(.vertical, 2)
                 .opacity(isMissing ? 0.6 : 1.0)
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                statusSummaryBar
+            }
             .searchable(text: $searchText, prompt: "Filter by name...")
             .navigationSplitViewColumnWidth(min: 260, ideal: 320)
         } detail: {
@@ -68,6 +88,13 @@ struct DatabaseBrowserView: View {
         }
         .frame(minWidth: 720, minHeight: 480)
         .onAppear { reload() }
+        // Auto-refresh whenever the extraction pipeline reports activity.
+        // extractionsInFlight changes on enqueue AND completion, so this
+        // catches both "work started" and "work finished" transitions.
+        .onChange(of: ingestion.extractionsInFlight) { _, _ in reload() }
+        .onChange(of: ingestion.extractionsCompleted) { _, _ in reload() }
+        .onChange(of: ingestion.extractionsFailed) { _, _ in reload() }
+        .onChange(of: ingestion.totalIngested) { _, _ in reload() }
         .toolbar {
             ToolbarItem {
                 Button(action: reload) {
@@ -103,6 +130,45 @@ struct DatabaseBrowserView: View {
 
     private func reload() {
         files = HollowBridge.shared.listFiles(limit: UInt32.max, offset: 0)
+    }
+
+    private var statusSummaryBar: some View {
+        HStack(spacing: 8) {
+            if statusCounts.isEmpty {
+                Text("No files")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(statusCounts, id: \.0) { (status, count) in
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(statusColor(status))
+                            .frame(width: 6, height: 6)
+                        Text("\(count)")
+                            .monospacedDigit()
+                        Text(statusLabel(status))
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private func statusLabel(_ status: String) -> String {
+        switch status {
+        case "indexed": "indexed"
+        case "pending": "pending"
+        case "extracting": "extracting"
+        case "unsupported": "unsupported"
+        case "extract_failed": "failed"
+        case "missing": "missing"
+        default: status
+        }
     }
 
     private func statusDot(_ status: String) -> some View {

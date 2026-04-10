@@ -31,18 +31,18 @@ struct ContentView: View {
 
             // Stats
             VStack(spacing: 6) {
-                Text("\(ingestion.totalIngested) files ingested")
+                Text("\(ingestion.totalIngested) files tracked")
                     .font(.title2.weight(.medium).monospacedDigit())
 
                 HStack(spacing: 14) {
                     if ingestion.extractionsInFlight > 0 {
-                        Label("\(ingestion.extractionsInFlight)", systemImage: "gearshape.2.fill")
+                        Label("\(ingestion.extractionsInFlight) extracting", systemImage: "gearshape.2.fill")
                             .foregroundStyle(.orange)
                     }
-                    Label("\(ingestion.extractionsCompleted)", systemImage: "checkmark.seal.fill")
+                    Label("\(ingestion.extractionsCompleted) extracted", systemImage: "checkmark.seal.fill")
                         .foregroundStyle(.green)
                     if ingestion.extractionsFailed > 0 {
-                        Label("\(ingestion.extractionsFailed)", systemImage: "exclamationmark.triangle.fill")
+                        Label("\(ingestion.extractionsFailed) failed", systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)
                     }
                 }
