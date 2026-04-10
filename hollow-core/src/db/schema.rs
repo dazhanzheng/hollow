@@ -1,4 +1,4 @@
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 const MIGRATION_V1: &str = "
 CREATE TABLE files (
@@ -73,6 +73,14 @@ ALTER TABLE files ADD COLUMN extension_mismatch INTEGER NOT NULL DEFAULT 0;
 UPDATE files SET status = 'pending' WHERE status = 'indexed';
 ";
 
+// V5: re-queue all extract_failed files for re-extraction. Before v5 the
+// pipeline conflated "no extractor available" with real failures; now that
+// `unsupported` is a distinct status, flip failed rows back to pending so
+// the next startup scan classifies them correctly.
+const MIGRATION_V5: &str = "
+UPDATE files SET status = 'pending' WHERE status = 'extract_failed';
+";
+
 pub fn migrate(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     let current_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
 
@@ -94,6 +102,11 @@ pub fn migrate(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     if current_version < 4 {
         conn.execute_batch(MIGRATION_V4)?;
         conn.pragma_update(None, "user_version", 4)?;
+    }
+
+    if current_version < 5 {
+        conn.execute_batch(MIGRATION_V5)?;
+        conn.pragma_update(None, "user_version", 5)?;
     }
 
     Ok(())
@@ -198,6 +211,33 @@ mod tests {
 
         let status: String = conn
             .query_row("SELECT status FROM files WHERE id = 'a'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(status, "pending");
+    }
+
+    #[test]
+    fn test_migration_v5_requeues_extract_failed() {
+        // Simulate a v4 DB with an extract_failed row
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        conn.execute_batch(MIGRATION_V1).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        conn.execute_batch(MIGRATION_V2).unwrap();
+        conn.pragma_update(None, "user_version", 2).unwrap();
+        conn.execute_batch(MIGRATION_V3).unwrap();
+        conn.pragma_update(None, "user_version", 3).unwrap();
+        conn.execute_batch(MIGRATION_V4).unwrap();
+        conn.pragma_update(None, "user_version", 4).unwrap();
+
+        conn.execute(
+            "INSERT INTO files (id, hash, quick_hash, current_path, original_path, file_name, size_bytes, created_at, modified_at, ingested_at, status) VALUES ('ef', '', '', '/ef.jpg', '/ef.jpg', 'ef.jpg', 0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'extract_failed')",
+            [],
+        ).unwrap();
+
+        migrate(&conn).unwrap();
+
+        let status: String = conn
+            .query_row("SELECT status FROM files WHERE id = 'ef'", [], |row| row.get(0))
             .unwrap();
         assert_eq!(status, "pending");
     }
