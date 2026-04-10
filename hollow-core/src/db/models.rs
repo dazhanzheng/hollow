@@ -16,6 +16,8 @@ pub struct FileRecord {
     pub modified_at: String,
     pub ingested_at: String,
     pub status: String,
+    pub detected_mime: Option<String>,
+    pub extension_mismatch: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

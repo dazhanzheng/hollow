@@ -124,6 +124,8 @@ impl HollowCore {
             modified_at,
             ingested_at,
             status: "pending".to_string(),
+            detected_mime: None,
+            extension_mismatch: false,
         };
 
         let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;

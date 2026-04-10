@@ -8,8 +8,8 @@ pub struct FileStore;
 impl FileStore {
     pub fn insert_file(conn: &Connection, record: FileRecord) -> Result<(), HollowError> {
         conn.execute(
-            "INSERT INTO files (id, hash, quick_hash, inode, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            "INSERT INTO files (id, hash, quick_hash, inode, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status, detected_mime, extension_mismatch)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             rusqlite::params![
                 record.id,
                 record.hash,
@@ -25,6 +25,8 @@ impl FileStore {
                 record.modified_at,
                 record.ingested_at,
                 record.status,
+                record.detected_mime,
+                record.extension_mismatch as i64,
             ],
         )?;
         Ok(())
@@ -46,10 +48,12 @@ impl FileStore {
             modified_at: row.get(11)?,
             ingested_at: row.get(12)?,
             status: row.get(13)?,
+            detected_mime: row.get(14)?,
+            extension_mismatch: row.get::<_, i64>(15)? != 0,
         })
     }
 
-    const SELECT_COLS: &str = "id, hash, quick_hash, inode, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status";
+    const SELECT_COLS: &str = "id, hash, quick_hash, inode, current_path, original_path, file_name, extension, mime_type, size_bytes, created_at, modified_at, ingested_at, status, detected_mime, extension_mismatch";
 
     pub fn get_file(conn: &Connection, id: &str) -> Result<Option<FileRecord>, HollowError> {
         let sql = format!("SELECT {} FROM files WHERE id = ?1", Self::SELECT_COLS);
@@ -244,6 +248,8 @@ mod tests {
             modified_at: "2026-04-09T10:00:00Z".to_string(),
             ingested_at: "2026-04-09T12:00:00Z".to_string(),
             status: "pending".to_string(),
+            detected_mime: None,
+            extension_mismatch: false,
         }
     }
 

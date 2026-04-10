@@ -969,10 +969,12 @@ public struct FileRecord: Equatable, Hashable {
     public var modifiedAt: String
     public var ingestedAt: String
     public var status: String
+    public var detectedMime: String?
+    public var extensionMismatch: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, hash: String, quickHash: String, inode: Int64?, currentPath: String, originalPath: String, fileName: String, `extension`: String?, mimeType: String?, sizeBytes: Int64, createdAt: String, modifiedAt: String, ingestedAt: String, status: String) {
+    public init(id: String, hash: String, quickHash: String, inode: Int64?, currentPath: String, originalPath: String, fileName: String, `extension`: String?, mimeType: String?, sizeBytes: Int64, createdAt: String, modifiedAt: String, ingestedAt: String, status: String, detectedMime: String?, extensionMismatch: Bool) {
         self.id = id
         self.hash = hash
         self.quickHash = quickHash
@@ -987,6 +989,8 @@ public struct FileRecord: Equatable, Hashable {
         self.modifiedAt = modifiedAt
         self.ingestedAt = ingestedAt
         self.status = status
+        self.detectedMime = detectedMime
+        self.extensionMismatch = extensionMismatch
     }
 
     
@@ -1018,7 +1022,9 @@ public struct FfiConverterTypeFileRecord: FfiConverterRustBuffer {
                 createdAt: FfiConverterString.read(from: &buf), 
                 modifiedAt: FfiConverterString.read(from: &buf), 
                 ingestedAt: FfiConverterString.read(from: &buf), 
-                status: FfiConverterString.read(from: &buf)
+                status: FfiConverterString.read(from: &buf), 
+                detectedMime: FfiConverterOptionString.read(from: &buf), 
+                extensionMismatch: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -1037,6 +1043,8 @@ public struct FfiConverterTypeFileRecord: FfiConverterRustBuffer {
         FfiConverterString.write(value.modifiedAt, into: &buf)
         FfiConverterString.write(value.ingestedAt, into: &buf)
         FfiConverterString.write(value.status, into: &buf)
+        FfiConverterOptionString.write(value.detectedMime, into: &buf)
+        FfiConverterBool.write(value.extensionMismatch, into: &buf)
     }
 }
 

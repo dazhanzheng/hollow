@@ -113,6 +113,8 @@ mod tests {
             modified_at: "2026-01-01T00:00:00Z".to_string(),
             ingested_at: "2026-01-01T00:00:00Z".to_string(),
             status: "pending".to_string(),
+            detected_mime: None,
+            extension_mismatch: false,
         };
         FileStore::insert_file(&db.conn, record).unwrap();
     }
