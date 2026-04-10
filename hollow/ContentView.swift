@@ -83,6 +83,15 @@ struct ContentView: View {
                     .background(.red.gradient, in: RoundedRectangle(cornerRadius: 8))
             }
 
+            // Extraction error banner
+            if let extractionError = ingestion.lastExtractionError {
+                Label("Extraction: \(extractionError)", systemImage: "doc.text.magnifyingglass")
+                    .font(.callout)
+                    .foregroundStyle(.white)
+                    .padding(10)
+                    .background(.orange.gradient, in: RoundedRectangle(cornerRadius: 8))
+            }
+
             Spacer()
         }
         .padding(24)
