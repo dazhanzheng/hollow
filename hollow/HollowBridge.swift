@@ -21,7 +21,7 @@ final class HollowBridge: @unchecked Sendable {
         }
     }
 
-    private static func databasePath() throws -> String {
+    static func databasePath() throws -> String {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask

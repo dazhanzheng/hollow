@@ -54,6 +54,12 @@ struct hollowApp: App {
                         openWindow(id: "log-viewer")
                     }
                     .keyboardShortcut("L", modifiers: [.command, .shift])
+
+                    Divider()
+
+                    Button("Delete Database and Quit") {
+                        confirmAndDeleteDatabase()
+                    }
                 }
             }
         }
@@ -72,6 +78,37 @@ struct hollowApp: App {
             LogViewerView()
                 .environment(\.locale, activeLocale)
         }
+    }
+
+    private func confirmAndDeleteDatabase() {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Delete database and quit?")
+        alert.informativeText = String(localized: "This permanently deletes hollow.db and all file records. Your files in ~/Hollow Inbox/ are not touched. Hollow will quit immediately; a fresh database is created on next launch.")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: String(localized: "Delete and Quit"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        do {
+            let dbPath = try HollowBridge.databasePath()
+            let fm = FileManager.default
+
+            // Stop the ingestion service so nothing writes during / after deletion.
+            ingestionService.stop()
+
+            // Remove hollow.db plus any SQLite sidecar files (-wal, -shm).
+            for path in [dbPath, dbPath + "-wal", dbPath + "-shm"] {
+                if fm.fileExists(atPath: path) {
+                    try fm.removeItem(atPath: path)
+                    HollowLogger.app.info("Deleted \(path)")
+                }
+            }
+        } catch {
+            HollowLogger.app.error("Failed to delete database: \(error.localizedDescription)")
+        }
+
+        NSApplication.shared.terminate(nil)
     }
 
     private func promptSidebarIfNeeded() {
