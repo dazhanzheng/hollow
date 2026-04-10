@@ -528,6 +528,7 @@ name = "hollow-core"
 version = "0.1.0"
 dependencies = [
  "chardetng",
+ "encoding_rs",
  "infer",
  "mime_guess",
  "rusqlite",
