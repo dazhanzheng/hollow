@@ -176,6 +176,47 @@ impl FileStore {
             .collect::<Result<Vec<String>, _>>()?;
         Ok(ids)
     }
+
+    pub fn update_detected_mime(
+        conn: &Connection,
+        id: &str,
+        detected_mime: &str,
+        extension_mismatch: bool,
+    ) -> Result<(), HollowError> {
+        let updated = conn.execute(
+            "UPDATE files SET detected_mime = ?1, extension_mismatch = ?2 WHERE id = ?3",
+            rusqlite::params![detected_mime, extension_mismatch as i64, id],
+        )?;
+        if updated == 0 {
+            return Err(HollowError::FileNotFound(id.to_string()));
+        }
+        Ok(())
+    }
+
+    pub fn get_quick_hash(conn: &Connection, id: &str) -> Result<Option<String>, HollowError> {
+        let mut stmt = conn.prepare("SELECT quick_hash FROM files WHERE id = ?1")?;
+        let mut rows = stmt.query(rusqlite::params![id])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(row.get(0)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn update_quick_hash(conn: &Connection, id: &str, quick_hash: &str) -> Result<(), HollowError> {
+        let updated = conn.execute(
+            "UPDATE files SET quick_hash = ?1 WHERE id = ?2",
+            rusqlite::params![quick_hash, id],
+        )?;
+        if updated == 0 {
+            return Err(HollowError::FileNotFound(id.to_string()));
+        }
+        Ok(())
+    }
+
+    pub fn mark_for_reextraction(conn: &Connection, id: &str) -> Result<(), HollowError> {
+        Self::update_status(conn, id, "pending")
+    }
 }
 
 #[cfg(test)]
@@ -304,6 +345,61 @@ mod tests {
         assert!(!FileStore::inode_exists(&db.conn, 12345).unwrap());
         FileStore::insert_file(&db.conn, record).unwrap();
         assert!(FileStore::inode_exists(&db.conn, 12345).unwrap());
+    }
+
+    #[test]
+    fn test_update_detected_mime() {
+        let db = test_db();
+        let record = sample_record();
+        FileStore::insert_file(&db.conn, record.clone()).unwrap();
+
+        FileStore::update_detected_mime(&db.conn, &record.id, "image/png", true).unwrap();
+
+        let (mime, mismatch): (Option<String>, i64) = db
+            .conn
+            .query_row(
+                "SELECT detected_mime, extension_mismatch FROM files WHERE id = ?1",
+                rusqlite::params![record.id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(mime.as_deref(), Some("image/png"));
+        assert_eq!(mismatch, 1);
+    }
+
+    #[test]
+    fn test_get_quick_hash_method() {
+        let db = test_db();
+        let record = sample_record();
+        FileStore::insert_file(&db.conn, record.clone()).unwrap();
+
+        let qh = FileStore::get_quick_hash(&db.conn, &record.id).unwrap();
+        assert_eq!(qh.as_deref(), Some("abcd1234"));
+    }
+
+    #[test]
+    fn test_mark_for_reextraction() {
+        let db = test_db();
+        let mut record = sample_record();
+        record.status = "indexed".to_string();
+        FileStore::insert_file(&db.conn, record.clone()).unwrap();
+
+        FileStore::mark_for_reextraction(&db.conn, &record.id).unwrap();
+
+        let fetched = FileStore::get_file(&db.conn, &record.id).unwrap().unwrap();
+        assert_eq!(fetched.status, "pending");
+    }
+
+    #[test]
+    fn test_update_quick_hash_method() {
+        let db = test_db();
+        let record = sample_record();
+        FileStore::insert_file(&db.conn, record.clone()).unwrap();
+
+        FileStore::update_quick_hash(&db.conn, &record.id, "newhash").unwrap();
+
+        let fetched = FileStore::get_file(&db.conn, &record.id).unwrap().unwrap();
+        assert_eq!(fetched.quick_hash, "newhash");
     }
 
     #[test]
