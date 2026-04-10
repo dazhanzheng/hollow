@@ -544,14 +544,29 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
      */
     func computeHash(fileId: String) throws  -> String
     
+    /**
+     * Run content extraction for a file. Updates file_content table and files.status.
+     */
+    func extractContent(fileId: String) throws  -> ExtractContentResult
+    
     func getFile(id: String) throws  -> FileRecord?
     
     func getLogs(sinceId: UInt64)  -> [LogEntry]
     
     /**
+     * Alias for get_pending_ids with a name that matches the new pipeline.
+     */
+    func getPendingExtractionIds() throws  -> [String]
+    
+    /**
      * Returns IDs of all files with status="pending" (not yet fully processed).
      */
     func getPendingIds() throws  -> [String]
+    
+    /**
+     * Recompute quick_hash and compare with stored value.
+     */
+    func hasChanged(fileId: String) throws  -> Bool
     
     /**
      * Fast intake: only reads fs metadata, no file content read.
@@ -560,6 +575,11 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
     func ingestFile(filePath: String) throws  -> FileRecord
     
     func listFiles(limit: UInt32, offset: UInt32) throws  -> [FileRecord]
+    
+    /**
+     * Flip an indexed file back to pending so it will be re-extracted.
+     */
+    func markForReextraction(fileId: String) throws 
     
     /**
      * Mark a file as fully processed.
@@ -665,6 +685,18 @@ open func computeHash(fileId: String)throws  -> String  {
 })
 }
     
+    /**
+     * Run content extraction for a file. Updates file_content table and files.status.
+     */
+open func extractContent(fileId: String)throws  -> ExtractContentResult  {
+    return try  FfiConverterTypeExtractContentResult_lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_extract_content(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(fileId),$0
+    )
+})
+}
+    
 open func getFile(id: String)throws  -> FileRecord?  {
     return try  FfiConverterOptionTypeFileRecord.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
     uniffi_hollow_core_fn_method_hollowcore_get_file(
@@ -684,12 +716,35 @@ open func getLogs(sinceId: UInt64) -> [LogEntry]  {
 }
     
     /**
+     * Alias for get_pending_ids with a name that matches the new pipeline.
+     */
+open func getPendingExtractionIds()throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_get_pending_extraction_ids(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
      * Returns IDs of all files with status="pending" (not yet fully processed).
      */
 open func getPendingIds()throws  -> [String]  {
     return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
     uniffi_hollow_core_fn_method_hollowcore_get_pending_ids(
             self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
+     * Recompute quick_hash and compare with stored value.
+     */
+open func hasChanged(fileId: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_has_changed(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(fileId),$0
     )
 })
 }
@@ -715,6 +770,17 @@ open func listFiles(limit: UInt32, offset: UInt32)throws  -> [FileRecord]  {
         FfiConverterUInt32.lower(offset),$0
     )
 })
+}
+    
+    /**
+     * Flip an indexed file back to pending so it will be re-extracted.
+     */
+open func markForReextraction(fileId: String)throws   {try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_mark_for_reextraction(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(fileId),$0
+    )
+}
 }
     
     /**
@@ -795,6 +861,80 @@ public func FfiConverterTypeHollowCore_lower(_ value: HollowCore) -> UInt64 {
 }
 
 
+
+
+public struct ExtractContentResult: Equatable, Hashable {
+    public var fileId: String
+    public var status: String
+    public var extractorName: String?
+    public var detectedMime: String
+    public var extensionMismatch: Bool
+    public var bodyTextBytes: UInt64
+    public var error: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(fileId: String, status: String, extractorName: String?, detectedMime: String, extensionMismatch: Bool, bodyTextBytes: UInt64, error: String?) {
+        self.fileId = fileId
+        self.status = status
+        self.extractorName = extractorName
+        self.detectedMime = detectedMime
+        self.extensionMismatch = extensionMismatch
+        self.bodyTextBytes = bodyTextBytes
+        self.error = error
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ExtractContentResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeExtractContentResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ExtractContentResult {
+        return
+            try ExtractContentResult(
+                fileId: FfiConverterString.read(from: &buf), 
+                status: FfiConverterString.read(from: &buf), 
+                extractorName: FfiConverterOptionString.read(from: &buf), 
+                detectedMime: FfiConverterString.read(from: &buf), 
+                extensionMismatch: FfiConverterBool.read(from: &buf), 
+                bodyTextBytes: FfiConverterUInt64.read(from: &buf), 
+                error: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ExtractContentResult, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.fileId, into: &buf)
+        FfiConverterString.write(value.status, into: &buf)
+        FfiConverterOptionString.write(value.extractorName, into: &buf)
+        FfiConverterString.write(value.detectedMime, into: &buf)
+        FfiConverterBool.write(value.extensionMismatch, into: &buf)
+        FfiConverterUInt64.write(value.bodyTextBytes, into: &buf)
+        FfiConverterOptionString.write(value.error, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExtractContentResult_lift(_ buf: RustBuffer) throws -> ExtractContentResult {
+    return try FfiConverterTypeExtractContentResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExtractContentResult_lower(_ value: ExtractContentResult) -> RustBuffer {
+    return FfiConverterTypeExtractContentResult.lower(value)
+}
 
 
 public struct FileRecord: Equatable, Hashable {
@@ -1320,19 +1460,31 @@ private let initializationResult: InitializationResult = {
     if (uniffi_hollow_core_checksum_method_hollowcore_compute_hash() != 34279) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_hollow_core_checksum_method_hollowcore_extract_content() != 25782) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_hollow_core_checksum_method_hollowcore_get_file() != 29901) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_get_logs() != 17376) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_hollow_core_checksum_method_hollowcore_get_pending_extraction_ids() != 49331) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_hollow_core_checksum_method_hollowcore_get_pending_ids() != 17365) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_has_changed() != 50519) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_ingest_file() != 36442) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_list_files() != 25763) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_mark_for_reextraction() != 23014) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_mark_indexed() != 20550) {
