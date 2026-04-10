@@ -105,7 +105,9 @@ struct DatabaseBrowserView: View {
         switch status {
         case "indexed": .green
         case "pending", "extracting": .orange
-        case "missing", "extract_failed": .red
+        case "missing": .secondary
+        case "unsupported": .secondary
+        case "extract_failed": .red
         default: .gray
         }
     }

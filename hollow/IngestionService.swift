@@ -67,7 +67,7 @@ final class IngestionService {
     private(set) var extractionsFailed: Int = 0
 
     private let watcher: FileWatcher
-    private let bridge: HollowBridge
+    nonisolated private let bridge: HollowBridge
 
     private let metadataQueue: OperationQueue
     private let contentQueue: OperationQueue
@@ -120,23 +120,19 @@ final class IngestionService {
         HollowLogger.ingestion.info("Ingestion service started (workers: \(Self.workerConcurrency))")
 
         let bridge = self.bridge
-        let watcher = self.watcher
+        // Scan for missed files on the main actor (watcher is main-actor-isolated),
+        // then hand off to a detached task for all the heavy bridge work.
+        let inboxFiles = watcher.scanAllFiles()
 
-        // Startup: count existing files, scan for missed files, resume pending extractions.
         Task.detached { [weak self] in
+            guard let self else { return }
+
             let count = bridge.listFiles(limit: UInt32.max, offset: 0).count
-            await MainActor.run { self?.totalIngested = count }
 
             // Ingest any files added while app was closed
-            let inboxFiles = watcher.scanAllFiles()
             let newPaths = inboxFiles
                 .filter { !bridge.pathExists($0.path) }
                 .map { $0.path }
-            if !newPaths.isEmpty {
-                await MainActor.run { [weak self] in
-                    self?.enqueueMetadataIntake(paths: newPaths)
-                }
-            }
 
             // Reclaim any files stuck in "extracting" state from a previous crash.
             let reclaimed = bridge.reclaimExtracting()
@@ -148,8 +144,16 @@ final class IngestionService {
             let pendingIds = bridge.getPendingExtractionIds()
             if !pendingIds.isEmpty {
                 HollowLogger.ingestion.info("Startup: resuming \(pendingIds.count) pending extractions")
-                await MainActor.run { [weak self] in
-                    self?.enqueueContentExtraction(fileIds: pendingIds)
+            }
+
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.totalIngested = count
+                if !newPaths.isEmpty {
+                    self.enqueueMetadataIntake(paths: newPaths)
+                }
+                if !pendingIds.isEmpty {
+                    self.enqueueContentExtraction(fileIds: pendingIds)
                 }
             }
         }
@@ -208,11 +212,16 @@ final class IngestionService {
             HollowLogger.ingestion.error("Extraction bridge error: \(fileId)")
             return
         }
-        if result.status == "indexed" {
+        switch result.status {
+        case "indexed":
             extractionsCompleted += 1
             lastExtractionError = nil
             HollowLogger.ingestion.info("Extracted: \(fileId) (\(result.bodyTextBytes) bytes, \(result.extractorName ?? "?"))")
-        } else {
+        case "missing":
+            HollowLogger.ingestion.info("Skipped missing file: \(fileId)")
+        case "unsupported":
+            HollowLogger.ingestion.debug("Unsupported format for \(fileId): \(result.detectedMime)")
+        default: // "extract_failed"
             extractionsFailed += 1
             lastExtractionError = result.error
             HollowLogger.ingestion.warning("Extract failed: \(fileId) — \(result.error ?? "?")")
@@ -241,13 +250,18 @@ final class IngestionService {
                 }
             }
 
+            // Capture as immutable lets before crossing into MainActor to avoid
+            // "reference to captured var" warnings in Swift 6 strict concurrency.
+            let finalNewIngestPaths = newIngestPaths
+            let finalReextractIds = reextractIds
+
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                if !newIngestPaths.isEmpty {
-                    self.enqueueMetadataIntake(paths: newIngestPaths)
+                if !finalNewIngestPaths.isEmpty {
+                    self.enqueueMetadataIntake(paths: finalNewIngestPaths)
                 }
-                if !reextractIds.isEmpty {
-                    self.enqueueContentExtraction(fileIds: reextractIds)
+                if !finalReextractIds.isEmpty {
+                    self.enqueueContentExtraction(fileIds: finalReextractIds)
                 }
             }
         }
