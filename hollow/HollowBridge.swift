@@ -5,16 +5,16 @@ import os
 /// Constructs the database path in Application Support and holds
 /// a reference to the Rust-backed HollowCore instance.
 final class HollowBridge: @unchecked Sendable {
-    static let shared = HollowBridge()
+    nonisolated static let shared = HollowBridge()
 
-    private var core: HollowCore?
+    private nonisolated(unsafe) var core: (any HollowCoreProtocol)?
 
-    var isReady: Bool { core != nil }
+    nonisolated var isReady: Bool { core != nil }
 
     private init() {
         do {
             let dbPath = try Self.databasePath()
-            core = try HollowCore(dbPath: dbPath)
+            core = try HollowCore(dbPath: dbPath) as any HollowCoreProtocol
         } catch {
             HollowLogger.bridge.error("HollowBridge init failed: \(error)")
             core = nil
@@ -40,7 +40,7 @@ final class HollowBridge: @unchecked Sendable {
         return hollowDir.appendingPathComponent("hollow.db").path
     }
 
-    func listFiles(limit: UInt32 = 20, offset: UInt32 = 0) -> [FileRecord] {
+    nonisolated func listFiles(limit: UInt32 = 20, offset: UInt32 = 0) -> [FileRecord] {
         guard let core else { return [] }
         do {
             return try core.listFiles(limit: limit, offset: offset)
@@ -57,7 +57,7 @@ final class HollowBridge: @unchecked Sendable {
     }
 
     /// Fast intake: only reads fs metadata, no file content. Returns instantly.
-    func ingestFile(path: String) -> IngestResult {
+    nonisolated func ingestFile(path: String) -> IngestResult {
         guard let core else { return .error("HollowCore not initialized") }
         do {
             let record = try core.ingestFile(filePath: path)
@@ -70,44 +70,44 @@ final class HollowBridge: @unchecked Sendable {
     }
 
     /// Heavy: reads file, computes SHA-256. Call from background thread.
-    func computeHash(fileId: String) -> String? {
+    nonisolated func computeHash(fileId: String) -> String? {
         guard let core else { return nil }
         return try? core.computeHash(fileId: fileId)
     }
 
     /// Mark file as fully processed.
-    func markIndexed(fileId: String) {
+    nonisolated func markIndexed(fileId: String) {
         guard let core else { return }
         try? core.markIndexed(fileId: fileId)
     }
 
-    func getPendingIds() -> [String] {
+    nonisolated func getPendingIds() -> [String] {
         guard let core else { return [] }
         return (try? core.getPendingIds()) ?? []
     }
 
-    func getLogs(sinceId: UInt64) -> [LogEntry] {
+    nonisolated func getLogs(sinceId: UInt64) -> [LogEntry] {
         guard let core else { return [] }
         return core.getLogs(sinceId: sinceId)
     }
 
-    func clearLogs() {
+    nonisolated func clearLogs() {
         guard let core else { return }
         core.clearLogs()
     }
 
-    func pathExists(_ path: String) -> Bool {
+    nonisolated func pathExists(_ path: String) -> Bool {
         guard let core else { return false }
         return (try? core.pathExists(path: path)) ?? false
     }
 
-    func markMissing(path: String) {
+    nonisolated func markMissing(path: String) {
         guard let core else { return }
         try? core.markMissing(path: path)
     }
 
     /// Run content extraction for a file. Returns nil on bridge error.
-    func extractContent(fileId: String) -> ExtractContentResult? {
+    nonisolated func extractContent(fileId: String) -> ExtractContentResult? {
         guard let core else { return nil }
         do {
             return try core.extractContent(fileId: fileId)
@@ -118,7 +118,7 @@ final class HollowBridge: @unchecked Sendable {
     }
 
     /// Check whether a file's content has changed since last ingestion.
-    func hasChanged(fileId: String) -> Bool {
+    nonisolated func hasChanged(fileId: String) -> Bool {
         guard let core else { return false }
         do {
             return try core.hasChanged(fileId: fileId)
@@ -129,7 +129,7 @@ final class HollowBridge: @unchecked Sendable {
     }
 
     /// Flip a file back to pending for re-extraction.
-    func markForReextraction(fileId: String) {
+    nonisolated func markForReextraction(fileId: String) {
         guard let core else { return }
         do {
             try core.markForReextraction(fileId: fileId)
@@ -139,7 +139,7 @@ final class HollowBridge: @unchecked Sendable {
     }
 
     /// Look up a file's UUID by its current path.
-    func fileIdForPath(_ path: String) -> String? {
+    nonisolated func fileIdForPath(_ path: String) -> String? {
         guard let core else { return nil }
         do {
             return try core.fileIdForPath(path: path)
@@ -150,7 +150,7 @@ final class HollowBridge: @unchecked Sendable {
     }
 
     /// Get all file IDs waiting for content extraction.
-    func getPendingExtractionIds() -> [String] {
+    nonisolated func getPendingExtractionIds() -> [String] {
         guard let core else { return [] }
         do {
             return try core.getPendingExtractionIds()
@@ -161,7 +161,7 @@ final class HollowBridge: @unchecked Sendable {
     }
 
     /// Reclaim files stuck in the `extracting` state from a previous crash.
-    func reclaimExtracting() -> UInt32 {
+    nonisolated func reclaimExtracting() -> UInt32 {
         guard let core else { return 0 }
         return (try? core.reclaimExtracting()) ?? 0
     }

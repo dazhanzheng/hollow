@@ -1,9 +1,11 @@
 import os
 
-enum HollowLogger {
-    static let fileWatcher = Logger(subsystem: "com.syncpulse.hollow", category: "FileWatcher")
-    static let ingestion   = Logger(subsystem: "com.syncpulse.hollow", category: "Ingestion")
-    static let bridge      = Logger(subsystem: "com.syncpulse.hollow", category: "Bridge")
-    static let app         = Logger(subsystem: "com.syncpulse.hollow", category: "App")
-    static let rustCore    = Logger(subsystem: "com.syncpulse.hollow", category: "RustCore")
+// HollowLogger intentionally has no actor isolation — Logger is Sendable and safe to use
+// from any context (background threads, Task.detached, nonisolated code, etc.)
+nonisolated enum HollowLogger {
+    nonisolated static let fileWatcher = Logger(subsystem: "com.syncpulse.hollow", category: "FileWatcher")
+    nonisolated static let ingestion   = Logger(subsystem: "com.syncpulse.hollow", category: "Ingestion")
+    nonisolated static let bridge      = Logger(subsystem: "com.syncpulse.hollow", category: "Bridge")
+    nonisolated static let app         = Logger(subsystem: "com.syncpulse.hollow", category: "App")
+    nonisolated static let rustCore    = Logger(subsystem: "com.syncpulse.hollow", category: "RustCore")
 }
