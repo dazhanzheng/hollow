@@ -20,6 +20,12 @@ struct DatabaseBrowserView: View {
                             .fontWeight(.medium)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                        if file.extensionMismatch {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                                .font(.caption)
+                                .help("Extension does not match detected format: \(file.detectedMime ?? "unknown")")
+                        }
                     }
                     HStack(spacing: 8) {
                         Label(formatBytes(file.sizeBytes), systemImage: "doc")
@@ -60,6 +66,13 @@ struct DatabaseBrowserView: View {
                 .help("Refresh")
             }
             ToolbarItem {
+                Button(action: reextractSelected) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                }
+                .disabled(selectedFile == nil)
+                .help("Re-extract content for selected file")
+            }
+            ToolbarItem {
                 Text("\(files.count) records")
                     .foregroundStyle(.secondary)
                     .font(.caption)
@@ -91,8 +104,8 @@ struct DatabaseBrowserView: View {
     private func statusColor(_ status: String) -> Color {
         switch status {
         case "indexed": .green
-        case "pending": .orange
-        case "missing": .red
+        case "pending", "extracting": .orange
+        case "missing", "extract_failed": .red
         default: .gray
         }
     }
@@ -101,6 +114,15 @@ struct DatabaseBrowserView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
+    }
+
+    private func reextractSelected() {
+        guard let id = selectedFileId else { return }
+        HollowBridge.shared.markForReextraction(fileId: id)
+        // Extract synchronously so the result is visible immediately on reload.
+        // Heavy work; consider moving to a background Task if files are large.
+        _ = HollowBridge.shared.extractContent(fileId: id)
+        reload()
     }
 }
 
@@ -120,6 +142,11 @@ private struct DetailPanel: View {
                 row("Extension", file.extension ?? "—")
                 row("MIME", file.mimeType ?? "—")
                 row("Size", ByteCountFormatter.string(fromByteCount: file.sizeBytes, countStyle: .file))
+            }
+
+            section("Detection") {
+                row("Detected MIME", file.detectedMime ?? "—")
+                row("Mismatch", file.extensionMismatch ? "⚠ yes" : "no")
             }
 
             section("Paths") {

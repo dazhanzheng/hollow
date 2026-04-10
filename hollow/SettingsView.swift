@@ -94,6 +94,14 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Performance") {
+                LabeledContent("Extraction workers") {
+                    Text("\(IngestionService.workerConcurrency)")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+
             Section("Developer") {
                 Toggle("Debug Mode", isOn: $debugMode)
                 Text("Shows Debug menu in the menu bar with database browser and log viewer.")

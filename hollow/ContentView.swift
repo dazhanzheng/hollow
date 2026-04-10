@@ -30,8 +30,25 @@ struct ContentView: View {
             .background(.quaternary, in: Capsule())
 
             // Stats
-            Text("\(ingestion.totalIngested) files ingested")
-                .font(.title2.weight(.medium).monospacedDigit())
+            VStack(spacing: 6) {
+                Text("\(ingestion.totalIngested) files ingested")
+                    .font(.title2.weight(.medium).monospacedDigit())
+
+                HStack(spacing: 14) {
+                    if ingestion.extractionsInFlight > 0 {
+                        Label("\(ingestion.extractionsInFlight)", systemImage: "gearshape.2.fill")
+                            .foregroundStyle(.orange)
+                    }
+                    Label("\(ingestion.extractionsCompleted)", systemImage: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                    if ingestion.extractionsFailed > 0 {
+                        Label("\(ingestion.extractionsFailed)", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                    }
+                }
+                .font(.caption.monospacedDigit())
+                .labelStyle(.titleAndIcon)
+            }
 
             // Recent files
             if !ingestion.recentFiles.isEmpty {
