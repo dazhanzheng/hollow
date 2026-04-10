@@ -138,6 +138,17 @@ final class HollowBridge: @unchecked Sendable {
         }
     }
 
+    /// Look up a file's UUID by its current path.
+    func fileIdForPath(_ path: String) -> String? {
+        guard let core else { return nil }
+        do {
+            return try core.fileIdForPath(path: path)
+        } catch {
+            HollowLogger.bridge.error("fileIdForPath failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
     /// Get all file IDs waiting for content extraction.
     func getPendingExtractionIds() -> [String] {
         guard let core else { return [] }

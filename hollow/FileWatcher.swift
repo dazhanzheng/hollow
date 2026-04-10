@@ -8,6 +8,11 @@ final class FileWatcher {
 
     var onNewFiles: (([URL]) -> Void)?
     var onRemovedFiles: (([URL]) -> Void)?
+    var onModifiedFiles: (([URL]) -> Void)?
+
+    private var modifyDebounce: [String: DispatchWorkItem] = [:]
+    private let modifyDebounceQueue = DispatchQueue(label: "com.syncpulse.hollow.modify-debounce")
+    private let modifyDebounceDelay: TimeInterval = 0.5
 
     static let ignoredExtensions: Set<String> = [
         "tmp", "download", "crdownload", "partial"
@@ -130,6 +135,17 @@ final class FileWatcher {
                 }
             }
 
+            // Modified existing file — debounce (save events can fire multiple times)
+            if flag & UInt32(kFSEventStreamEventFlagItemModified) != 0 {
+                // Only treat as modify if the file still exists and wasn't already handled as new/removed
+                let alreadyHandledAsNew = newURLs.contains(url)
+                let alreadyHandledAsRemoved = removedURLs.contains(url)
+                if !alreadyHandledAsNew && !alreadyHandledAsRemoved &&
+                   FileManager.default.fileExists(atPath: path) {
+                    watcher.scheduleModify(url)
+                }
+            }
+
             // MustScanSubDirs: kernel dropped events, fall back to full scan
             if flag & UInt32(kFSEventStreamEventFlagMustScanSubDirs) != 0 {
                 watcher.fallbackFullScan()
@@ -142,6 +158,26 @@ final class FileWatcher {
         }
         if !newURLs.isEmpty {
             watcher.onNewFiles?(newURLs)
+        }
+    }
+
+    private func scheduleModify(_ url: URL) {
+        let key = url.path
+        modifyDebounceQueue.async { [weak self] in
+            guard let self else { return }
+            self.modifyDebounce[key]?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.modifyDebounceQueue.async {
+                    self.modifyDebounce.removeValue(forKey: key)
+                }
+                self.onModifiedFiles?([url])
+            }
+            self.modifyDebounce[key] = work
+            DispatchQueue.global(qos: .utility).asyncAfter(
+                deadline: .now() + self.modifyDebounceDelay,
+                execute: work
+            )
         }
     }
 

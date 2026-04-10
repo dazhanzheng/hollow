@@ -99,6 +99,9 @@ final class IngestionService {
         watcher.onRemovedFiles = { [weak self] urls in
             self?.handleRemovedFiles(urls)
         }
+        watcher.onModifiedFiles = { [weak self] urls in
+            self?.handleModifiedFiles(urls)
+        }
     }
 
     func start() {
@@ -194,6 +197,40 @@ final class IngestionService {
         } else {
             extractionsFailed += 1
             HollowLogger.ingestion.warning("Extract failed: \(fileId) — \(result.error ?? "?")")
+        }
+    }
+
+    // MARK: - Modification
+
+    private func handleModifiedFiles(_ urls: [URL]) {
+        let bridge = self.bridge
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var reextractIds: [String] = []
+            var newIngestPaths: [String] = []
+
+            for url in urls {
+                let path = url.path
+                guard let fileId = bridge.fileIdForPath(path) else {
+                    // Unknown path — treat as new file
+                    newIngestPaths.append(path)
+                    continue
+                }
+                if bridge.hasChanged(fileId: fileId) {
+                    bridge.markForReextraction(fileId: fileId)
+                    reextractIds.append(fileId)
+                    HollowLogger.ingestion.info("Re-extraction queued: \(path)")
+                }
+            }
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if !newIngestPaths.isEmpty {
+                    self.enqueueMetadataIntake(paths: newIngestPaths)
+                }
+                if !reextractIds.isEmpty {
+                    self.enqueueContentExtraction(fileIds: reextractIds)
+                }
+            }
         }
     }
 
