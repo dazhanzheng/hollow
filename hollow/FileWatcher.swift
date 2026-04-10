@@ -37,6 +37,13 @@ final class FileWatcher {
         FSEventStreamInvalidate(stream)
         FSEventStreamRelease(stream)
         self.stream = nil
+        modifyDebounceQueue.async { [weak self] in
+            guard let self else { return }
+            for (_, work) in self.modifyDebounce {
+                work.cancel()
+            }
+            self.modifyDebounce.removeAll()
+        }
     }
 
     static var inboxURL: URL {
@@ -168,13 +175,12 @@ final class FileWatcher {
             self.modifyDebounce[key]?.cancel()
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
-                self.modifyDebounceQueue.async {
-                    self.modifyDebounce.removeValue(forKey: key)
-                }
+                // Synchronous cleanup before firing the callback — inside modifyDebounceQueue.
+                self.modifyDebounce.removeValue(forKey: key)
                 self.onModifiedFiles?([url])
             }
             self.modifyDebounce[key] = work
-            DispatchQueue.global(qos: .utility).asyncAfter(
+            self.modifyDebounceQueue.asyncAfter(
                 deadline: .now() + self.modifyDebounceDelay,
                 execute: work
             )
