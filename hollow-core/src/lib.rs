@@ -9,8 +9,10 @@ pub use db::models::FileRecord;
 pub use error::HollowError;
 pub use logging::{LogEntry, LogLevel};
 
+use content::pipeline::ContentPipeline;
+use content::registry::default_registry;
 use db::Database;
-use store::FileStore;
+use store::{FileContentStore, FileStore};
 
 use sha2::{Sha256, Digest};
 use std::fs;
@@ -22,6 +24,17 @@ use tracing::{info, debug};
 use uuid::Uuid;
 
 uniffi::setup_scaffolding!();
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
+pub struct ExtractContentResult {
+    pub file_id: String,
+    pub status: String,
+    pub extractor_name: Option<String>,
+    pub detected_mime: String,
+    pub extension_mismatch: bool,
+    pub body_text_bytes: u64,
+    pub error: Option<String>,
+}
 
 #[derive(uniffi::Object)]
 pub struct HollowCore {
@@ -211,6 +224,120 @@ impl HollowCore {
 
     pub fn clear_logs(&self) {
         logging::clear_log_buffer();
+    }
+
+    /// Run content extraction for a file. Updates file_content table and files.status.
+    pub fn extract_content(&self, file_id: String) -> Result<ExtractContentResult, HollowError> {
+        // Fetch record to get path + extension
+        let (current_path, original_extension) = {
+            let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+            let record = FileStore::get_file(&db.conn, &file_id)?
+                .ok_or_else(|| HollowError::FileNotFound(file_id.clone()))?;
+            (record.current_path, record.extension)
+        };
+
+        let path = Path::new(&current_path);
+        let pipeline = ContentPipeline::new(default_registry());
+        let outcome = pipeline.process(path, original_extension.as_deref());
+
+        let extracted_at = iso8601_now();
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+
+        // Record detected mime + mismatch on files row
+        FileStore::update_detected_mime(
+            &db.conn,
+            &file_id,
+            &outcome.detected_mime,
+            outcome.extension_mismatch,
+        )?;
+
+        let body_text_bytes: u64;
+        if outcome.status == "indexed" {
+            let body_text = outcome.body_text.clone().unwrap_or_default();
+            body_text_bytes = body_text.len() as u64;
+            let compressed = zstd::encode_all(body_text.as_bytes(), 3)
+                .map_err(|e| HollowError::Database(format!("zstd encode: {}", e)))?;
+            FileContentStore::upsert(
+                &db.conn,
+                &file_id,
+                &compressed,
+                body_text_bytes as i64,
+                outcome.encoding.as_deref(),
+                outcome.extractor_name.as_deref().unwrap_or("Unknown"),
+                &extracted_at,
+            )?;
+            FileStore::update_status(&db.conn, &file_id, "indexed")?;
+            info!(
+                "Extracted content: {} ({} bytes, {})",
+                file_id,
+                body_text_bytes,
+                outcome.extractor_name.as_deref().unwrap_or("?")
+            );
+        } else {
+            body_text_bytes = 0;
+            FileContentStore::upsert_error(
+                &db.conn,
+                &file_id,
+                outcome.error.as_deref().unwrap_or("unknown error"),
+                outcome.extractor_name.as_deref(),
+                &extracted_at,
+            )?;
+            FileStore::update_status(&db.conn, &file_id, "extract_failed")?;
+            info!(
+                "Extraction failed: {} ({})",
+                file_id,
+                outcome.error.as_deref().unwrap_or("?")
+            );
+        }
+
+        Ok(ExtractContentResult {
+            file_id,
+            status: outcome.status,
+            extractor_name: outcome.extractor_name,
+            detected_mime: outcome.detected_mime,
+            extension_mismatch: outcome.extension_mismatch,
+            body_text_bytes,
+            error: outcome.error,
+        })
+    }
+
+    /// Recompute quick_hash and compare with stored value.
+    pub fn has_changed(&self, file_id: String) -> Result<bool, HollowError> {
+        let (current_path, old_quick_hash) = {
+            let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+            let record = FileStore::get_file(&db.conn, &file_id)?
+                .ok_or_else(|| HollowError::FileNotFound(file_id.clone()))?;
+            (record.current_path, record.quick_hash)
+        };
+
+        let path = Path::new(&current_path);
+        if !path.exists() {
+            return Err(HollowError::FileNotFound(current_path));
+        }
+
+        let metadata = fs::metadata(path)
+            .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
+        let new_quick_hash = compute_quick_hash(path, metadata.len())?;
+
+        if new_quick_hash != old_quick_hash {
+            // Persist the new hash so subsequent calls don't keep reporting "changed"
+            let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+            FileStore::update_quick_hash(&db.conn, &file_id, &new_quick_hash)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Flip an indexed file back to pending so it will be re-extracted.
+    pub fn mark_for_reextraction(&self, file_id: String) -> Result<(), HollowError> {
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        FileStore::mark_for_reextraction(&db.conn, &file_id)
+    }
+
+    /// Alias for get_pending_ids with a name that matches the new pipeline.
+    pub fn get_pending_extraction_ids(&self) -> Result<Vec<String>, HollowError> {
+        self.get_pending_ids()
     }
 }
 
@@ -418,5 +545,96 @@ mod tests {
         let core = HollowCore::new(":memory:".to_string()).unwrap();
         let result = core.ingest_file("/nonexistent/path/file.txt".to_string());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_content_plain_text() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_extract", "note.txt", b"hello from test");
+
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+        assert_eq!(record.status, "pending");
+
+        let result = core.extract_content(record.id.clone()).unwrap();
+        assert_eq!(result.status, "indexed");
+        assert!(result.extractor_name.is_some());
+        assert_eq!(result.detected_mime, "text/plain");
+        assert!(!result.extension_mismatch);
+        assert_eq!(result.body_text_bytes, 15);
+
+        let updated = core.get_file(record.id.clone()).unwrap().unwrap();
+        assert_eq!(updated.status, "indexed");
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_extract_content_unknown_format_fails_gracefully() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_extract_bad", "blob.bin", &[0xFF, 0xFE, 0x00, 0x01]);
+
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+        let result = core.extract_content(record.id.clone()).unwrap();
+
+        assert_eq!(result.status, "extract_failed");
+        assert!(result.error.is_some());
+
+        let updated = core.get_file(record.id).unwrap().unwrap();
+        assert_eq!(updated.status, "extract_failed");
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_has_changed_detects_content_change() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_changed", "file.txt", b"version one");
+
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+        assert!(!core.has_changed(record.id.clone()).unwrap());
+
+        // Modify file
+        std::fs::write(&path, b"version two is longer").unwrap();
+        assert!(core.has_changed(record.id.clone()).unwrap());
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_mark_for_reextraction_flips_status_to_pending() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_reex", "file.txt", b"hello");
+
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+        core.extract_content(record.id.clone()).unwrap();
+
+        let after_extract = core.get_file(record.id.clone()).unwrap().unwrap();
+        assert_eq!(after_extract.status, "indexed");
+
+        core.mark_for_reextraction(record.id.clone()).unwrap();
+        let after_mark = core.get_file(record.id.clone()).unwrap().unwrap();
+        assert_eq!(after_mark.status, "pending");
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_get_pending_extraction_ids_method() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let dir = std::env::temp_dir().join("hollow_t_pending_ex");
+        fs::create_dir_all(&dir).unwrap();
+
+        let f1 = dir.join("a.txt");
+        fs::write(&f1, b"a").unwrap();
+        let f2 = dir.join("b.txt");
+        fs::write(&f2, b"b").unwrap();
+
+        core.ingest_file(f1.to_string_lossy().to_string()).unwrap();
+        core.ingest_file(f2.to_string_lossy().to_string()).unwrap();
+
+        let pending = core.get_pending_extraction_ids().unwrap();
+        assert_eq!(pending.len(), 2);
+
+        cleanup(&[&dir]);
     }
 }
