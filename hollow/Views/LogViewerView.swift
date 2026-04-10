@@ -178,7 +178,7 @@ struct LogViewerView: View {
     }
 
     private func startAutoRefresh() {
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
             refreshAsync()
         }
     }
