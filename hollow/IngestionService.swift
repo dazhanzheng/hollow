@@ -21,7 +21,9 @@ final class MetadataIntakeOperation: Operation, @unchecked Sendable {
         let result = HollowBridge.shared.ingestFile(path: path)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.service?.handleMetadataIntakeResult(result, path: self.path)
+            MainActor.assumeIsolated {
+                self.service?.handleMetadataIntakeResult(result, path: self.path)
+            }
         }
     }
 }
@@ -43,14 +45,16 @@ final class ContentExtractionOperation: Operation, @unchecked Sendable {
         let result = HollowBridge.shared.extractContent(fileId: fileId)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.service?.handleContentExtractionResult(result, fileId: self.fileId)
+            MainActor.assumeIsolated {
+                self.service?.handleContentExtractionResult(result, fileId: self.fileId)
+            }
         }
     }
 }
 
 // MARK: - IngestionService
 
-@Observable
+@MainActor @Observable
 final class IngestionService {
     private(set) var isWatching = false
     private(set) var totalIngested: Int = 0
@@ -70,7 +74,7 @@ final class IngestionService {
 
     /// Concurrency: half the CPU cores, minimum 2. Background work must not
     /// starve the UI or foreground apps.
-    static var workerConcurrency: Int {
+    nonisolated static var workerConcurrency: Int {
         let cores = ProcessInfo.processInfo.activeProcessorCount
         return max(2, cores / 2)
     }
@@ -94,13 +98,19 @@ final class IngestionService {
         self.contentQueue = cq
 
         watcher.onNewFiles = { [weak self] urls in
-            self?.enqueueMetadataIntake(paths: urls.map { $0.path })
+            Task { @MainActor in
+                self?.enqueueMetadataIntake(paths: urls.map { $0.path })
+            }
         }
         watcher.onRemovedFiles = { [weak self] urls in
-            self?.handleRemovedFiles(urls)
+            Task { @MainActor in
+                self?.handleRemovedFiles(urls)
+            }
         }
         watcher.onModifiedFiles = { [weak self] urls in
-            self?.handleModifiedFiles(urls)
+            Task { @MainActor in
+                self?.handleModifiedFiles(urls)
+            }
         }
     }
 
@@ -110,20 +120,20 @@ final class IngestionService {
         HollowLogger.ingestion.info("Ingestion service started (workers: \(Self.workerConcurrency))")
 
         let bridge = self.bridge
+        let watcher = self.watcher
 
         // Startup: count existing files, scan for missed files, resume pending extractions.
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        Task.detached { [weak self] in
             let count = bridge.listFiles(limit: UInt32.max, offset: 0).count
-            DispatchQueue.main.async { self?.totalIngested = count }
+            await MainActor.run { self?.totalIngested = count }
 
             // Ingest any files added while app was closed
-            guard let self else { return }
-            let inboxFiles = self.watcher.scanAllFiles()
+            let inboxFiles = watcher.scanAllFiles()
             let newPaths = inboxFiles
                 .filter { !bridge.pathExists($0.path) }
                 .map { $0.path }
             if !newPaths.isEmpty {
-                DispatchQueue.main.async { [weak self] in
+                await MainActor.run { [weak self] in
                     self?.enqueueMetadataIntake(paths: newPaths)
                 }
             }
@@ -138,7 +148,7 @@ final class IngestionService {
             let pendingIds = bridge.getPendingExtractionIds()
             if !pendingIds.isEmpty {
                 HollowLogger.ingestion.info("Startup: resuming \(pendingIds.count) pending extractions")
-                DispatchQueue.main.async { [weak self] in
+                await MainActor.run { [weak self] in
                     self?.enqueueContentExtraction(fileIds: pendingIds)
                 }
             }
@@ -194,14 +204,17 @@ final class IngestionService {
         extractionsInFlight = max(0, extractionsInFlight - 1)
         guard let result else {
             extractionsFailed += 1
+            lastExtractionError = "bridge error"
             HollowLogger.ingestion.error("Extraction bridge error: \(fileId)")
             return
         }
         if result.status == "indexed" {
             extractionsCompleted += 1
+            lastExtractionError = nil
             HollowLogger.ingestion.info("Extracted: \(fileId) (\(result.bodyTextBytes) bytes, \(result.extractorName ?? "?"))")
         } else {
             extractionsFailed += 1
+            lastExtractionError = result.error
             HollowLogger.ingestion.warning("Extract failed: \(fileId) — \(result.error ?? "?")")
         }
     }
@@ -210,7 +223,7 @@ final class IngestionService {
 
     private func handleModifiedFiles(_ urls: [URL]) {
         let bridge = self.bridge
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        Task.detached { [weak self] in
             var reextractIds: [String] = []
             var newIngestPaths: [String] = []
 
@@ -228,7 +241,7 @@ final class IngestionService {
                 }
             }
 
-            DispatchQueue.main.async { [weak self] in
+            await MainActor.run { [weak self] in
                 guard let self else { return }
                 if !newIngestPaths.isEmpty {
                     self.enqueueMetadataIntake(paths: newIngestPaths)
@@ -244,14 +257,18 @@ final class IngestionService {
 
     private func handleRemovedFiles(_ urls: [URL]) {
         let bridge = self.bridge
-        DispatchQueue.global(qos: .utility).async { [weak self] in
+        Task.detached { [weak self] in
             for url in urls {
                 bridge.markMissing(path: url.path)
             }
             let count = bridge.listFiles(limit: UInt32.max, offset: 0).count
-            DispatchQueue.main.async { [weak self] in
+            await MainActor.run { [weak self] in
                 self?.totalIngested = count
             }
         }
     }
+
+    // MARK: - Extraction error surfacing
+
+    private(set) var lastExtractionError: String?
 }
