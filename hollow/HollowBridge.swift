@@ -105,4 +105,47 @@ final class HollowBridge: @unchecked Sendable {
         guard let core else { return }
         try? core.markMissing(path: path)
     }
+
+    /// Run content extraction for a file. Returns nil on bridge error.
+    func extractContent(fileId: String) -> ExtractContentResult? {
+        guard let core else { return nil }
+        do {
+            return try core.extractContent(fileId: fileId)
+        } catch {
+            HollowLogger.bridge.error("extractContent failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Check whether a file's content has changed since last ingestion.
+    func hasChanged(fileId: String) -> Bool {
+        guard let core else { return false }
+        do {
+            return try core.hasChanged(fileId: fileId)
+        } catch {
+            HollowLogger.bridge.error("hasChanged failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+    /// Flip a file back to pending for re-extraction.
+    func markForReextraction(fileId: String) {
+        guard let core else { return }
+        do {
+            try core.markForReextraction(fileId: fileId)
+        } catch {
+            HollowLogger.bridge.error("markForReextraction failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Get all file IDs waiting for content extraction.
+    func getPendingExtractionIds() -> [String] {
+        guard let core else { return [] }
+        do {
+            return try core.getPendingExtractionIds()
+        } catch {
+            HollowLogger.bridge.error("getPendingExtractionIds failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
 }
