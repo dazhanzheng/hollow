@@ -339,6 +339,18 @@ impl HollowCore {
     pub fn get_pending_extraction_ids(&self) -> Result<Vec<String>, HollowError> {
         self.get_pending_ids()
     }
+
+    /// Look up a file's UUID by its current path.
+    pub fn file_id_for_path(&self, path: String) -> Result<Option<String>, HollowError> {
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        let mut stmt = db.conn.prepare("SELECT id FROM files WHERE current_path = ?1")?;
+        let mut rows = stmt.query(rusqlite::params![path])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(row.get(0)?))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 /// Quick hash: SHA-256 of file_size + 5 sampled 4KB blocks.
@@ -615,6 +627,17 @@ mod tests {
         let after_mark = core.get_file(record.id.clone()).unwrap().unwrap();
         assert_eq!(after_mark.status, "pending");
 
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_file_id_for_path() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_idforpath", "lookup.txt", b"x");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+        let looked_up = core.file_id_for_path(path.to_string_lossy().to_string()).unwrap();
+        assert_eq!(looked_up, Some(record.id));
+        assert!(core.file_id_for_path("/nonexistent".to_string()).unwrap().is_none());
         cleanup(&[&path, &path.parent().unwrap()]);
     }
 
