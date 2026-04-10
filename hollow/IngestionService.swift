@@ -128,6 +128,12 @@ final class IngestionService {
                 }
             }
 
+            // Reclaim any files stuck in "extracting" state from a previous crash.
+            let reclaimed = bridge.reclaimExtracting()
+            if reclaimed > 0 {
+                HollowLogger.ingestion.info("Startup: reclaimed \(reclaimed) files stuck in extracting state")
+            }
+
             // Resume any pending extractions from previous sessions
             let pendingIds = bridge.getPendingExtractionIds()
             if !pendingIds.isEmpty {

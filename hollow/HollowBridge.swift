@@ -159,4 +159,10 @@ final class HollowBridge: @unchecked Sendable {
             return []
         }
     }
+
+    /// Reclaim files stuck in the `extracting` state from a previous crash.
+    func reclaimExtracting() -> UInt32 {
+        guard let core else { return 0 }
+        return (try? core.reclaimExtracting()) ?? 0
+    }
 }

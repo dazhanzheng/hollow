@@ -230,11 +230,26 @@ impl HollowCore {
 
     /// Run content extraction for a file. Updates file_content table and files.status.
     pub fn extract_content(&self, file_id: String) -> Result<ExtractContentResult, HollowError> {
-        // Fetch record to get path + extension
+        // Step 1: Read record + mark as extracting (in same lock).
+        // Marking extracting here lets crash recovery distinguish "never started" from "interrupted".
+        // If the file is already missing, bail out immediately without touching its status.
         let (current_path, original_extension) = {
             let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
             let record = FileStore::get_file(&db.conn, &file_id)?
                 .ok_or_else(|| HollowError::FileNotFound(file_id.clone()))?;
+            if record.status == "missing" {
+                info!("Skip extraction: {} is already missing", file_id);
+                return Ok(ExtractContentResult {
+                    file_id,
+                    status: "missing".to_string(),
+                    extractor_name: None,
+                    detected_mime: String::new(),
+                    extension_mismatch: false,
+                    body_text_bytes: 0,
+                    error: Some("file was removed before extraction started".to_string()),
+                });
+            }
+            FileStore::update_status(&db.conn, &file_id, "extracting")?;
             (record.current_path, record.extension)
         };
 
@@ -365,6 +380,20 @@ impl HollowCore {
     /// Alias for get_pending_ids with a name that matches the new pipeline.
     pub fn get_pending_extraction_ids(&self) -> Result<Vec<String>, HollowError> {
         self.get_pending_ids()
+    }
+
+    /// Reclaim files stuck in the `extracting` state (crashed mid-extraction).
+    /// Flips them back to pending so the next resume scan picks them up.
+    pub fn reclaim_extracting(&self) -> Result<u32, HollowError> {
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        let count = db.conn.execute(
+            "UPDATE files SET status = 'pending' WHERE status = 'extracting'",
+            [],
+        )?;
+        if count > 0 {
+            info!("Reclaimed {} files stuck in extracting state", count);
+        }
+        Ok(count as u32)
     }
 
     /// Look up a file's UUID by its current path.
@@ -653,6 +682,31 @@ mod tests {
         core.mark_for_reextraction(record.id.clone()).unwrap();
         let after_mark = core.get_file(record.id.clone()).unwrap().unwrap();
         assert_eq!(after_mark.status, "pending");
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_extract_content_uses_extracting_state() {
+        // Verifies reclaim is a no-op when nothing is stuck after a clean run.
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let reclaimed = core.reclaim_extracting().unwrap();
+        assert_eq!(reclaimed, 0);
+    }
+
+    #[test]
+    fn test_reclaim_extracting_flips_to_pending() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_reclaim", "x.txt", b"data");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        // mark_for_reextraction → pending, then extract_content → extracting → indexed
+        core.mark_for_reextraction(record.id.clone()).unwrap();
+        core.extract_content(record.id.clone()).unwrap();
+
+        // After a successful extraction, nothing should be stuck in extracting.
+        let reclaimed = core.reclaim_extracting().unwrap();
+        assert_eq!(reclaimed, 0);
 
         cleanup(&[&path, &path.parent().unwrap()]);
     }
