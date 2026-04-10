@@ -245,6 +245,23 @@ impl HollowCore {
         let extracted_at = iso8601_now();
         let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
 
+        // Guard: if the file was marked missing between our two lock acquisitions, do not overwrite.
+        let current_status = FileStore::get_file(&db.conn, &file_id)?
+            .ok_or_else(|| HollowError::FileNotFound(file_id.clone()))?
+            .status;
+        if current_status == "missing" {
+            info!("Skip overwrite: {} was marked missing during extraction", file_id);
+            return Ok(ExtractContentResult {
+                file_id,
+                status: "missing".to_string(),
+                extractor_name: outcome.extractor_name,
+                detected_mime: outcome.detected_mime,
+                extension_mismatch: false,
+                body_text_bytes: 0,
+                error: Some("file was removed during extraction".to_string()),
+            });
+        }
+
         // Record detected mime + mismatch on files row
         FileStore::update_detected_mime(
             &db.conn,
@@ -628,6 +645,26 @@ mod tests {
         core.mark_for_reextraction(record.id.clone()).unwrap();
         let after_mark = core.get_file(record.id.clone()).unwrap().unwrap();
         assert_eq!(after_mark.status, "pending");
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_extract_content_preserves_missing_status() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_del_race", "file.txt", b"hello");
+
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        // Simulate: mark missing before extraction completes
+        core.mark_missing(path.to_string_lossy().to_string()).unwrap();
+
+        // Now file is marked missing — extract_content should not overwrite
+        let result = core.extract_content(record.id.clone()).unwrap();
+        assert_eq!(result.status, "missing");
+
+        let fetched = core.get_file(record.id).unwrap().unwrap();
+        assert_eq!(fetched.status, "missing");
 
         cleanup(&[&path, &path.parent().unwrap()]);
     }
