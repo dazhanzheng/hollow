@@ -13,37 +13,44 @@ struct DatabaseBrowserView: View {
     var body: some View {
         NavigationSplitView {
             List(filteredFiles, id: \.id, selection: $selectedFileId) { file in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
                         statusDot(file.status)
                         Text(file.fileName)
                             .fontWeight(.medium)
                             .lineLimit(1)
+                            .truncationMode(.middle)
                     }
                     HStack(spacing: 8) {
-                        Text(formatBytes(file.sizeBytes))
-                        Text(file.mimeType ?? "unknown")
+                        Label(formatBytes(file.sizeBytes), systemImage: "doc")
+                        if let mime = file.mimeType {
+                            Text(mime)
+                        }
                         Text(file.status)
                             .foregroundStyle(statusColor(file.status))
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .labelStyle(.titleOnly)
                 }
                 .padding(.vertical, 2)
             }
             .searchable(text: $searchText, prompt: "Filter by name...")
-            .navigationSplitViewColumnWidth(min: 250, ideal: 320)
+            .navigationSplitViewColumnWidth(min: 260, ideal: 320)
         } detail: {
             if let file = selectedFile {
                 ScrollView {
                     DetailPanel(file: file)
                 }
             } else {
-                Text("Select a file to view details")
-                    .foregroundStyle(.secondary)
+                ContentUnavailableView(
+                    "No Selection",
+                    systemImage: "doc.text.magnifyingglass",
+                    description: Text("Select a file to view details")
+                )
             }
         }
-        .frame(minWidth: 700, minHeight: 450)
+        .frame(minWidth: 720, minHeight: 480)
         .onAppear { reload() }
         .toolbar {
             ToolbarItem {
@@ -56,6 +63,7 @@ struct DatabaseBrowserView: View {
                 Text("\(files.count) records")
                     .foregroundStyle(.secondary)
                     .font(.caption)
+                    .monospacedDigit()
             }
         }
     }
@@ -77,7 +85,7 @@ struct DatabaseBrowserView: View {
     private func statusDot(_ status: String) -> some View {
         Circle()
             .fill(statusColor(status))
-            .frame(width: 6, height: 6)
+            .frame(width: 7, height: 7)
     }
 
     private func statusColor(_ status: String) -> Color {
@@ -100,54 +108,51 @@ private struct DetailPanel: View {
     let file: FileRecord
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Group {
-                section("Identity") {
-                    row("ID", file.id)
-                    row("Status", file.status)
-                    row("Inode", file.inode.map { String($0) } ?? "—")
-                }
+        VStack(alignment: .leading, spacing: 16) {
+            section("Identity") {
+                row("ID", file.id)
+                row("Status", file.status)
+                row("Inode", file.inode.map { String($0) } ?? "—")
+            }
 
-                section("File") {
-                    row("Name", file.fileName)
-                    row("Extension", file.extension ?? "—")
-                    row("MIME", file.mimeType ?? "—")
-                    row("Size", ByteCountFormatter.string(fromByteCount: file.sizeBytes, countStyle: .file))
-                }
+            section("File") {
+                row("Name", file.fileName)
+                row("Extension", file.extension ?? "—")
+                row("MIME", file.mimeType ?? "—")
+                row("Size", ByteCountFormatter.string(fromByteCount: file.sizeBytes, countStyle: .file))
+            }
 
-                section("Paths") {
-                    row("Current", file.currentPath)
-                    row("Original", file.originalPath)
-                }
+            section("Paths") {
+                row("Current", file.currentPath)
+                row("Original", file.originalPath)
+            }
 
-                section("Timestamps") {
-                    row("Created", file.createdAt)
-                    row("Modified", file.modifiedAt)
-                    row("Ingested", file.ingestedAt)
-                }
+            section("Timestamps") {
+                row("Created", file.createdAt)
+                row("Modified", file.modifiedAt)
+                row("Ingested", file.ingestedAt)
+            }
 
-                section("Hashes") {
-                    row("Quick Hash", file.quickHash.isEmpty ? "—" : file.quickHash)
-                    row("Full Hash", file.hash.isEmpty ? "—" : file.hash)
-                }
+            section("Hashes") {
+                row("Quick Hash", file.quickHash.isEmpty ? "—" : file.quickHash)
+                row("Full Hash", file.hash.isEmpty ? "—" : file.hash)
             }
         }
-        .padding()
+        .padding(20)
         .textSelection(.enabled)
     }
 
     private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.headline)
-                .padding(.top, 4)
             content()
             Divider()
         }
     }
 
     private func row(_ label: String, _ value: String) -> some View {
-        HStack(alignment: .top) {
+        HStack(alignment: .top, spacing: 12) {
             Text(label)
                 .foregroundStyle(.secondary)
                 .frame(width: 90, alignment: .trailing)
@@ -155,6 +160,6 @@ private struct DetailPanel: View {
                 .font(.system(.body, design: .monospaced))
                 .lineLimit(nil)
         }
-        .font(.caption)
+        .font(.callout)
     }
 }

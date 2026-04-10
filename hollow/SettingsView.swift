@@ -21,14 +21,34 @@ struct SettingsView: View {
         Form {
             Section("Storage") {
                 LabeledContent("Inbox Folder") {
-                    Text(inboxPath)
-                        .textSelection(.enabled)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Text(inboxPath)
+                            .textSelection(.enabled)
+                            .foregroundStyle(.secondary)
+                        Button {
+                            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: inboxPath)
+                        } label: {
+                            Image(systemName: "folder")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Reveal in Finder")
+                    }
                 }
                 LabeledContent("Database") {
-                    Text(dbPath)
-                        .textSelection(.enabled)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Text(dbPath)
+                            .textSelection(.enabled)
+                            .foregroundStyle(.secondary)
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting(
+                                [URL(fileURLWithPath: dbPath)]
+                            )
+                        } label: {
+                            Image(systemName: "folder")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Reveal in Finder")
+                    }
                 }
             }
 
@@ -40,16 +60,22 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
 
                 if enableFullHash {
-                    HStack {
+                    HStack(spacing: 8) {
                         Button("Run Full Hash Now") {
                             runFullHashForAll()
                         }
                         .disabled(isComputingFullHash)
 
+                        if isComputingFullHash {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+
                         if let progress = fullHashProgress {
                             Text(progress)
                                 .font(.caption)
                                 .foregroundStyle(.orange)
+                                .monospacedDigit()
                         }
                     }
                 }
@@ -57,13 +83,13 @@ struct SettingsView: View {
 
             Section("Developer") {
                 Toggle("Debug Mode", isOn: $debugMode)
-                Text("Shows Debug menu in the menu bar with database browser.")
+                Text("Shows Debug menu in the menu bar with database browser and log viewer.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 450)
+        .frame(width: 480)
         .padding()
     }
 

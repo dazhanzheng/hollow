@@ -1,8 +1,6 @@
 import SwiftUI
 import OSLog
 
-/// Lightweight value type extracted from OSLogEntryLog so we don't hold
-/// heavyweight system objects in the view's state.
 private struct LogRow: Identifiable, Equatable {
     let id: Int
     let date: Date
@@ -13,7 +11,7 @@ private struct LogRow: Identifiable, Equatable {
 
 struct LogViewerView: View {
     @State private var rows: [LogRow] = []
-    @State private var selectedTab = 0       // 0=Swift, 1=Rust
+    @State private var selectedTab = 0
     @State private var filterLevel: OSLogEntryLog.Level? = nil
     @State private var searchText = ""
     @State private var autoRefresh = true
@@ -25,83 +23,11 @@ struct LogViewerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Toolbar
-            HStack {
-                Picker("", selection: $selectedTab) {
-                    Text("Swift").tag(0)
-                    Text("Rust").tag(1)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 160)
-
-                Picker("Level", selection: $filterLevel) {
-                    Text("All").tag(nil as OSLogEntryLog.Level?)
-                    Text("Debug").tag(OSLogEntryLog.Level.debug as OSLogEntryLog.Level?)
-                    Text("Info").tag(OSLogEntryLog.Level.info as OSLogEntryLog.Level?)
-                    Text("Warning").tag(OSLogEntryLog.Level.notice as OSLogEntryLog.Level?)
-                    Text("Error").tag(OSLogEntryLog.Level.error as OSLogEntryLog.Level?)
-                }
-                .frame(width: 120)
-
-                TextField("Search...", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 200)
-
-                Spacer()
-
-                Toggle("Auto-refresh", isOn: $autoRefresh)
-                    .toggleStyle(.switch)
-
-                Button(action: refreshAsync) {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .help("Refresh")
-                .disabled(isLoading)
-
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-
-                Text("\(filteredRows.count) entries")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-            }
-            .padding(8)
-
+            toolbar
             Divider()
-
-            // Log list
-            ScrollViewReader { proxy in
-                List(filteredRows) { row in
-                    HStack(alignment: .top, spacing: 8) {
-                        Text(formatTime(row.date))
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 80, alignment: .leading)
-
-                        levelBadge(row.level)
-                            .frame(width: 50)
-
-                        Text(row.category)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 80, alignment: .leading)
-
-                        Text(row.message)
-                            .font(.system(.caption, design: .monospaced))
-                            .lineLimit(nil)
-                            .textSelection(.enabled)
-                    }
-                }
-                .onChange(of: filteredRows.count) {
-                    if autoRefresh, let last = filteredRows.last {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
-                }
-            }
+            logList
         }
-        .frame(minWidth: 700, minHeight: 400)
+        .frame(minWidth: 720, minHeight: 420)
         .onAppear {
             refreshAsync()
             startAutoRefresh()
@@ -113,6 +39,93 @@ struct LogViewerView: View {
             if autoRefresh { startAutoRefresh() } else { stopAutoRefresh() }
         }
     }
+
+    // MARK: - Toolbar
+
+    private var toolbar: some View {
+        HStack(spacing: 12) {
+            Picker("", selection: $selectedTab) {
+                Text("Swift").tag(0)
+                Text("Rust").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 150)
+
+            Picker("Level", selection: $filterLevel) {
+                Text("All Levels").tag(nil as OSLogEntryLog.Level?)
+                Divider()
+                Text("Debug").tag(OSLogEntryLog.Level.debug as OSLogEntryLog.Level?)
+                Text("Info").tag(OSLogEntryLog.Level.info as OSLogEntryLog.Level?)
+                Text("Warning").tag(OSLogEntryLog.Level.notice as OSLogEntryLog.Level?)
+                Text("Error").tag(OSLogEntryLog.Level.error as OSLogEntryLog.Level?)
+            }
+            .frame(width: 130)
+
+            TextField("Search...", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 200)
+
+            Spacer()
+
+            Toggle("Auto", isOn: $autoRefresh)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+
+            Button(action: refreshAsync) {
+                Image(systemName: "arrow.clockwise")
+            }
+            .disabled(isLoading)
+            .help("Refresh")
+
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            Text("\(filteredRows.count)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.quaternary, in: Capsule())
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    // MARK: - Log List
+
+    private var logList: some View {
+        ScrollViewReader { proxy in
+            List(filteredRows) { row in
+                HStack(alignment: .top, spacing: 8) {
+                    Text(formatTime(row.date))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 72, alignment: .leading)
+
+                    levelBadge(row.level)
+
+                    Text(row.category)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 80, alignment: .leading)
+
+                    Text(row.message)
+                        .font(.system(.caption, design: .monospaced))
+                        .lineLimit(nil)
+                        .textSelection(.enabled)
+                }
+            }
+            .onChange(of: filteredRows.count) {
+                if autoRefresh, let last = filteredRows.last {
+                    proxy.scrollTo(last.id, anchor: .bottom)
+                }
+            }
+        }
+    }
+
+    // MARK: - Filtering
 
     private var filteredRows: [LogRow] {
         var result = rows
@@ -138,7 +151,8 @@ struct LogViewerView: View {
         return result
     }
 
-    /// Read OSLogStore off the main thread, then update state on main.
+    // MARK: - Data Fetching
+
     private func refreshAsync() {
         guard !isLoading else { return }
         isLoading = true
@@ -188,6 +202,8 @@ struct LogViewerView: View {
         refreshTimer = nil
     }
 
+    // MARK: - Helpers
+
     private func formatTime(_ date: Date) -> String {
         let fmt = DateFormatter()
         fmt.dateFormat = "HH:mm:ss"
@@ -197,15 +213,16 @@ struct LogViewerView: View {
     @ViewBuilder
     private func levelBadge(_ level: OSLogEntryLog.Level) -> some View {
         let (text, color): (String, Color) = switch level {
-        case .debug: ("DEBUG", .gray)
-        case .info: ("INFO", .blue)
-        case .notice: ("WARN", .orange)
-        case .error: ("ERROR", .red)
-        case .fault: ("FAULT", .red)
-        default: ("OTHER", .gray)
+        case .debug: ("DBG", .gray)
+        case .info: ("INF", .blue)
+        case .notice: ("WRN", .orange)
+        case .error: ("ERR", .red)
+        case .fault: ("FLT", .red)
+        default: ("???", .gray)
         }
         Text(text)
             .font(.system(.caption2, design: .monospaced, weight: .bold))
             .foregroundStyle(color)
+            .frame(width: 32)
     }
 }
