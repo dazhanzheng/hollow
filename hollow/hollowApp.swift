@@ -6,13 +6,29 @@ struct hollowApp: App {
     @State private var ingestionService = IngestionService()
     @State private var showSidebarPrompt = false
     @AppStorage("debugMode") private var debugMode = false
+    @AppStorage("appLanguage") private var appLanguage = ""
     @AppStorage("sidebarPromptDismissed") private var sidebarPromptDismissed = false
     @Environment(\.openWindow) private var openWindow
+
+    init() {
+        // Apply language override before any UI renders
+        let lang = UserDefaults.standard.string(forKey: "appLanguage") ?? ""
+        if !lang.isEmpty {
+            UserDefaults.standard.set([lang], forKey: "AppleLanguages")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+        }
+    }
+
+    private var activeLocale: Locale {
+        appLanguage.isEmpty ? .autoupdatingCurrent : Locale(identifier: appLanguage)
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(ingestionService)
+                .environment(\.locale, activeLocale)
                 .onAppear {
                     ingestionService.start()
                     RustLogRelay.shared.start()
@@ -44,14 +60,17 @@ struct hollowApp: App {
 
         Settings {
             SettingsView()
+                .environment(\.locale, activeLocale)
         }
 
         Window("Database Browser", id: "database-browser") {
             DatabaseBrowserView()
+                .environment(\.locale, activeLocale)
         }
 
         Window("Log Viewer", id: "log-viewer") {
             LogViewerView()
+                .environment(\.locale, activeLocale)
         }
     }
 
@@ -61,7 +80,6 @@ struct hollowApp: App {
         let inboxURL = FileWatcher.inboxURL
         let parentURL = inboxURL.deletingLastPathComponent()
 
-        // Open the parent folder in Finder with Hollow Inbox selected
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             NSWorkspace.shared.selectFile(
                 inboxURL.path,
@@ -89,8 +107,8 @@ private struct SidebarPromptView: View {
                 .font(.title3.weight(.semibold))
 
             VStack(alignment: .leading, spacing: 8) {
-                instructionRow(step: "1", text: "Finder has opened your home folder")
-                instructionRow(step: "2", text: "Drag the \"Hollow Inbox\" folder into Finder's sidebar under Favorites")
+                instructionRow(step: "1", text: String(localized: "Finder has opened your home folder"))
+                instructionRow(step: "2", text: String(localized: "Drag the \"Hollow Inbox\" folder into Finder's sidebar under Favorites"))
             }
             .padding(.horizontal)
 

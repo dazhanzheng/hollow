@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("enableFullHash") private var enableFullHash = false
     @AppStorage("debugMode") private var debugMode = false
+    @AppStorage("appLanguage") private var appLanguage = ""
     @State private var isComputingFullHash = false
     @State private var fullHashProgress: String?
 
@@ -19,6 +20,18 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Language") {
+                Picker("Language", selection: $appLanguage) {
+                    Text("System Default").tag("")
+                    Divider()
+                    Text("English").tag("en")
+                    Text("简体中文").tag("zh-Hans")
+                }
+                Text("Restart the app after changing language.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Storage") {
                 LabeledContent("Inbox Folder") {
                     HStack(spacing: 4) {
