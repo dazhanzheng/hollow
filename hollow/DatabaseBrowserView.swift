@@ -13,13 +13,21 @@ struct DatabaseBrowserView: View {
     var body: some View {
         NavigationSplitView {
             List(filteredFiles, id: \.id, selection: $selectedFileId) { file in
+                let isMissing = file.status == "missing"
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         statusDot(file.status)
+                        if isMissing {
+                            Image(systemName: "trash.slash.fill")
+                                .foregroundStyle(.red)
+                                .font(.caption)
+                                .help("Source file no longer exists on disk")
+                        }
                         Text(file.fileName)
                             .fontWeight(.medium)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                            .strikethrough(isMissing, color: .red)
                         if file.extensionMismatch {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
@@ -34,12 +42,14 @@ struct DatabaseBrowserView: View {
                         }
                         Text(file.status)
                             .foregroundStyle(statusColor(file.status))
+                            .fontWeight(isMissing ? .semibold : .regular)
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .labelStyle(.titleOnly)
                 }
                 .padding(.vertical, 2)
+                .opacity(isMissing ? 0.6 : 1.0)
             }
             .searchable(text: $searchText, prompt: "Filter by name...")
             .navigationSplitViewColumnWidth(min: 260, ideal: 320)
@@ -105,7 +115,7 @@ struct DatabaseBrowserView: View {
         switch status {
         case "indexed": .green
         case "pending", "extracting": .orange
-        case "missing": .secondary
+        case "missing": .red
         case "unsupported": .secondary
         case "extract_failed": .red
         default: .gray
