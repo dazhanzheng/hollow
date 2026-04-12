@@ -54,7 +54,7 @@ struct SearchView: View {
         isSearching = true
         let currentQuery = query
         DispatchQueue.global(qos: .userInitiated).async {
-            let searchResults = HollowBridge.shared.search(
+            let searchResults = HollowBridge.shared.hybridSearch(
                 query: currentQuery,
                 limit: 50
             )

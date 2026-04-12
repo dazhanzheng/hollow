@@ -16,6 +16,8 @@ struct hollowApp: App {
     @AppStorage("sidebarPromptDismissed") private var sidebarPromptDismissed = false
     @AppStorage("launchAtLoginPromptDismissed") private var launchAtLoginPromptDismissed = false
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
+    @AppStorage("hasShownModelOnboarding") private var hasShownOnboarding = false
+    @State private var showModelOnboarding = false
     @Environment(\.openWindow) private var openWindow
 
     init() {
@@ -53,6 +55,10 @@ struct hollowApp: App {
                     HollowLogger.app.info("hollow app launched")
                     promptSidebarIfNeeded()
                     promptLaunchAtLoginIfNeeded()
+                    promptModelOnboardingIfNeeded()
+                }
+                .sheet(isPresented: $showModelOnboarding) {
+                    OnboardingModelView()
                 }
                 .sheet(isPresented: $showSidebarPrompt) {
                     SidebarPromptView(isPresented: $showSidebarPrompt) {
@@ -179,6 +185,17 @@ struct hollowApp: App {
             guard !showSidebarPrompt else { return }
             showLaunchAtLoginPrompt = true
             HollowLogger.app.info("Showing launch-at-login prompt")
+        }
+    }
+
+    private func promptModelOnboardingIfNeeded() {
+        guard !hasShownOnboarding else { return }
+        // Delay to avoid stacking on top of sidebar/launch-at-login prompts.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            guard !hasShownOnboarding else { return }
+            // Don't stack on top of other prompts.
+            guard !showSidebarPrompt, !showLaunchAtLoginPrompt else { return }
+            showModelOnboarding = true
         }
     }
 

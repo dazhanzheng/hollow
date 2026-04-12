@@ -579,6 +579,12 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
     func computeHash(fileId: String) throws  -> String
     
     /**
+     * Generate and store an embedding for a file.
+     * Loads the model lazily on first call.
+     */
+    func embedFile(fileId: String) throws  -> Bool
+    
+    /**
      * Run content extraction for a file. Updates file_content table and files.status.
      */
     func extractContent(fileId: String) throws  -> ExtractContentResult
@@ -630,9 +636,19 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
      */
     func getBodyText(fileId: String) throws  -> String?
     
+    /**
+     * Get embedding statistics.
+     */
+    func getEmbeddingStatus() throws  -> EmbeddingStatus
+    
     func getFile(id: String) throws  -> FileRecord?
     
     func getLogs(sinceId: UInt64)  -> [LogEntry]
+    
+    /**
+     * Get file IDs that need embedding.
+     */
+    func getPendingEmbeddingIds() throws  -> [String]
     
     /**
      * Alias for get_pending_ids with a name that matches the new pipeline.
@@ -650,10 +666,27 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
     func hasChanged(fileId: String) throws  -> Bool
     
     /**
+     * Hybrid search: combines full-text (FTS5) and semantic (embedding) search.
+     * If embedding model is loaded, the query text is also embedded for vector search.
+     * Falls back to FTS5-only if no model is available.
+     */
+    func hybridSearch(query: String, limit: UInt32) throws  -> [SearchResult]
+    
+    /**
      * Fast intake: only reads fs metadata, no file content read.
      * Returns immediately with hash="", status="pending".
      */
     func ingestFile(filePath: String) throws  -> FileRecord
+    
+    /**
+     * Check if the default embedding model is ready.
+     */
+    func isEmbeddingReady()  -> Bool
+    
+    /**
+     * List available embedding models and their download status.
+     */
+    func listEmbeddingModels()  -> [EmbeddingModelInfo]
     
     /**
      * List all built-in extractor plugins. Static; does not hit the database.
@@ -791,6 +824,19 @@ open func computeHash(fileId: String)throws  -> String  {
 }
     
     /**
+     * Generate and store an embedding for a file.
+     * Loads the model lazily on first call.
+     */
+open func embedFile(fileId: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_embed_file(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(fileId),$0
+    )
+})
+}
+    
+    /**
      * Run content extraction for a file. Updates file_content table and files.status.
      */
 open func extractContent(fileId: String)throws  -> ExtractContentResult  {
@@ -883,6 +929,17 @@ open func getBodyText(fileId: String)throws  -> String?  {
 })
 }
     
+    /**
+     * Get embedding statistics.
+     */
+open func getEmbeddingStatus()throws  -> EmbeddingStatus  {
+    return try  FfiConverterTypeEmbeddingStatus_lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_get_embedding_status(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
 open func getFile(id: String)throws  -> FileRecord?  {
     return try  FfiConverterOptionTypeFileRecord.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
     uniffi_hollow_core_fn_method_hollowcore_get_file(
@@ -897,6 +954,17 @@ open func getLogs(sinceId: UInt64) -> [LogEntry]  {
     uniffi_hollow_core_fn_method_hollowcore_get_logs(
             self.uniffiCloneHandle(),
         FfiConverterUInt64.lower(sinceId),$0
+    )
+})
+}
+    
+    /**
+     * Get file IDs that need embedding.
+     */
+open func getPendingEmbeddingIds()throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_get_pending_embedding_ids(
+            self.uniffiCloneHandle(),$0
     )
 })
 }
@@ -936,6 +1004,21 @@ open func hasChanged(fileId: String)throws  -> Bool  {
 }
     
     /**
+     * Hybrid search: combines full-text (FTS5) and semantic (embedding) search.
+     * If embedding model is loaded, the query text is also embedded for vector search.
+     * Falls back to FTS5-only if no model is available.
+     */
+open func hybridSearch(query: String, limit: UInt32)throws  -> [SearchResult]  {
+    return try  FfiConverterSequenceTypeSearchResult.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_hybrid_search(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(query),
+        FfiConverterUInt32.lower(limit),$0
+    )
+})
+}
+    
+    /**
      * Fast intake: only reads fs metadata, no file content read.
      * Returns immediately with hash="", status="pending".
      */
@@ -944,6 +1027,28 @@ open func ingestFile(filePath: String)throws  -> FileRecord  {
     uniffi_hollow_core_fn_method_hollowcore_ingest_file(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(filePath),$0
+    )
+})
+}
+    
+    /**
+     * Check if the default embedding model is ready.
+     */
+open func isEmbeddingReady() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_hollow_core_fn_method_hollowcore_is_embedding_ready(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
+     * List available embedding models and their download status.
+     */
+open func listEmbeddingModels() -> [EmbeddingModelInfo]  {
+    return try!  FfiConverterSequenceTypeEmbeddingModelInfo.lift(try! rustCall() {
+    uniffi_hollow_core_fn_method_hollowcore_list_embedding_models(
+            self.uniffiCloneHandle(),$0
     )
 })
 }
@@ -1098,6 +1203,134 @@ public func FfiConverterTypeHollowCore_lower(_ value: HollowCore) -> UInt64 {
 }
 
 
+
+
+public struct EmbeddingModelInfo: Equatable, Hashable {
+    public var name: String
+    public var displayName: String
+    public var description: String
+    public var downloadSizeMb: UInt64
+    public var ramUsageMb: UInt64
+    public var isDownloaded: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, displayName: String, description: String, downloadSizeMb: UInt64, ramUsageMb: UInt64, isDownloaded: Bool) {
+        self.name = name
+        self.displayName = displayName
+        self.description = description
+        self.downloadSizeMb = downloadSizeMb
+        self.ramUsageMb = ramUsageMb
+        self.isDownloaded = isDownloaded
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension EmbeddingModelInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEmbeddingModelInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EmbeddingModelInfo {
+        return
+            try EmbeddingModelInfo(
+                name: FfiConverterString.read(from: &buf), 
+                displayName: FfiConverterString.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf), 
+                downloadSizeMb: FfiConverterUInt64.read(from: &buf), 
+                ramUsageMb: FfiConverterUInt64.read(from: &buf), 
+                isDownloaded: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: EmbeddingModelInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.displayName, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+        FfiConverterUInt64.write(value.downloadSizeMb, into: &buf)
+        FfiConverterUInt64.write(value.ramUsageMb, into: &buf)
+        FfiConverterBool.write(value.isDownloaded, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEmbeddingModelInfo_lift(_ buf: RustBuffer) throws -> EmbeddingModelInfo {
+    return try FfiConverterTypeEmbeddingModelInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEmbeddingModelInfo_lower(_ value: EmbeddingModelInfo) -> RustBuffer {
+    return FfiConverterTypeEmbeddingModelInfo.lower(value)
+}
+
+
+public struct EmbeddingStatus: Equatable, Hashable {
+    public var totalIndexed: UInt32
+    public var totalEmbedded: UInt32
+    public var pendingEmbedding: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(totalIndexed: UInt32, totalEmbedded: UInt32, pendingEmbedding: UInt32) {
+        self.totalIndexed = totalIndexed
+        self.totalEmbedded = totalEmbedded
+        self.pendingEmbedding = pendingEmbedding
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension EmbeddingStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEmbeddingStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EmbeddingStatus {
+        return
+            try EmbeddingStatus(
+                totalIndexed: FfiConverterUInt32.read(from: &buf), 
+                totalEmbedded: FfiConverterUInt32.read(from: &buf), 
+                pendingEmbedding: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: EmbeddingStatus, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.totalIndexed, into: &buf)
+        FfiConverterUInt32.write(value.totalEmbedded, into: &buf)
+        FfiConverterUInt32.write(value.pendingEmbedding, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEmbeddingStatus_lift(_ buf: RustBuffer) throws -> EmbeddingStatus {
+    return try FfiConverterTypeEmbeddingStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEmbeddingStatus_lower(_ value: EmbeddingStatus) -> RustBuffer {
+    return FfiConverterTypeEmbeddingStatus.lower(value)
+}
 
 
 public struct ExtractContentResult: Equatable, Hashable {
@@ -1967,6 +2200,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeEmbeddingModelInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [EmbeddingModelInfo]
+
+    public static func write(_ value: [EmbeddingModelInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeEmbeddingModelInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [EmbeddingModelInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [EmbeddingModelInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeEmbeddingModelInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeExtractedImage: FfiConverterRustBuffer {
     typealias SwiftType = [ExtractedImage]
 
@@ -2113,6 +2371,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_hollow_core_checksum_method_hollowcore_compute_hash() != 34279) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_hollow_core_checksum_method_hollowcore_embed_file() != 36600) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_hollow_core_checksum_method_hollowcore_extract_content() != 25782) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2128,10 +2389,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_hollow_core_checksum_method_hollowcore_get_body_text() != 62092) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_hollow_core_checksum_method_hollowcore_get_embedding_status() != 25434) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_hollow_core_checksum_method_hollowcore_get_file() != 29901) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_get_logs() != 17376) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_get_pending_embedding_ids() != 23444) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_get_pending_extraction_ids() != 49331) {
@@ -2143,7 +2410,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_hollow_core_checksum_method_hollowcore_has_changed() != 50519) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_hollow_core_checksum_method_hollowcore_hybrid_search() != 27849) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_hollow_core_checksum_method_hollowcore_ingest_file() != 36442) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_is_embedding_ready() != 10712) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_list_embedding_models() != 47432) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_list_extractors() != 27329) {

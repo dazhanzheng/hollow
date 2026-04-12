@@ -273,6 +273,11 @@ void uniffi_hollow_core_fn_method_hollowcore_clear_logs(uint64_t ptr, RustCallSt
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_compute_hash(uint64_t ptr, RustBuffer file_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_EMBED_FILE
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_EMBED_FILE
+int8_t uniffi_hollow_core_fn_method_hollowcore_embed_file(uint64_t ptr, RustBuffer file_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_EXTRACT_CONTENT
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_EXTRACT_CONTENT
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_extract_content(uint64_t ptr, RustBuffer file_id, RustCallStatus *_Nonnull out_status
@@ -298,6 +303,11 @@ RustBuffer uniffi_hollow_core_fn_method_hollowcore_file_id_for_path(uint64_t ptr
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_get_body_text(uint64_t ptr, RustBuffer file_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_EMBEDDING_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_EMBEDDING_STATUS
+RustBuffer uniffi_hollow_core_fn_method_hollowcore_get_embedding_status(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_FILE
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_FILE
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_get_file(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
@@ -306,6 +316,11 @@ RustBuffer uniffi_hollow_core_fn_method_hollowcore_get_file(uint64_t ptr, RustBu
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_LOGS
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_LOGS
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_get_logs(uint64_t ptr, uint64_t since_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_PENDING_EMBEDDING_IDS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_PENDING_EMBEDDING_IDS
+RustBuffer uniffi_hollow_core_fn_method_hollowcore_get_pending_embedding_ids(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_PENDING_EXTRACTION_IDS
@@ -323,9 +338,24 @@ RustBuffer uniffi_hollow_core_fn_method_hollowcore_get_pending_ids(uint64_t ptr,
 int8_t uniffi_hollow_core_fn_method_hollowcore_has_changed(uint64_t ptr, RustBuffer file_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_HYBRID_SEARCH
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_HYBRID_SEARCH
+RustBuffer uniffi_hollow_core_fn_method_hollowcore_hybrid_search(uint64_t ptr, RustBuffer query, uint32_t limit, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_INGEST_FILE
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_INGEST_FILE
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_ingest_file(uint64_t ptr, RustBuffer file_path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_IS_EMBEDDING_READY
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_IS_EMBEDDING_READY
+int8_t uniffi_hollow_core_fn_method_hollowcore_is_embedding_ready(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_LIST_EMBEDDING_MODELS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_LIST_EMBEDDING_MODELS
+RustBuffer uniffi_hollow_core_fn_method_hollowcore_list_embedding_models(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_LIST_EXTRACTORS
@@ -651,6 +681,12 @@ uint16_t uniffi_hollow_core_checksum_method_hollowcore_compute_hash(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_EMBED_FILE
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_EMBED_FILE
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_embed_file(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_EXTRACT_CONTENT
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_EXTRACT_CONTENT
 uint16_t uniffi_hollow_core_checksum_method_hollowcore_extract_content(void
@@ -681,6 +717,12 @@ uint16_t uniffi_hollow_core_checksum_method_hollowcore_get_body_text(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_EMBEDDING_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_EMBEDDING_STATUS
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_get_embedding_status(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_FILE
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_FILE
 uint16_t uniffi_hollow_core_checksum_method_hollowcore_get_file(void
@@ -690,6 +732,12 @@ uint16_t uniffi_hollow_core_checksum_method_hollowcore_get_file(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_LOGS
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_LOGS
 uint16_t uniffi_hollow_core_checksum_method_hollowcore_get_logs(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_PENDING_EMBEDDING_IDS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_PENDING_EMBEDDING_IDS
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_get_pending_embedding_ids(void
     
 );
 #endif
@@ -711,9 +759,27 @@ uint16_t uniffi_hollow_core_checksum_method_hollowcore_has_changed(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_HYBRID_SEARCH
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_HYBRID_SEARCH
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_hybrid_search(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_INGEST_FILE
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_INGEST_FILE
 uint16_t uniffi_hollow_core_checksum_method_hollowcore_ingest_file(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_IS_EMBEDDING_READY
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_IS_EMBEDDING_READY
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_is_embedding_ready(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_LIST_EMBEDDING_MODELS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_LIST_EMBEDDING_MODELS
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_list_embedding_models(void
     
 );
 #endif
