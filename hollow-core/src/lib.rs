@@ -860,6 +860,16 @@ impl HollowCore {
             return Ok(false);
         }
 
+        // Pre-flight: verify ONNX Runtime dylib exists before touching ort.
+        // ort panics (and poisons its own internal global mutex) if the dylib
+        // is missing, so we must never let execution reach ort::Session::builder()
+        // without a valid dylib on disk.
+        if std::env::var("ORT_DYLIB_PATH").map_or(true, |p| !Path::new(&p).exists()) {
+            return Err(HollowError::InvalidInput(
+                "ONNX Runtime not installed. Download the embedding model from Settings → Models.".to_string()
+            ));
+        }
+
         // Ensure model is loaded. Recover from poisoned lock (prior panic in ort).
         let mut model_lock = match self.embedding_model.lock() {
             Ok(guard) => guard,
@@ -877,22 +887,9 @@ impl HollowCore {
                 ));
             }
             info!("Loading embedding model...");
-            // catch_unwind: ort panics if dylib is missing — don't poison the mutex
-            let load_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                EmbeddingModel::load(&model_path, &tokenizer_path)
-            }));
-            match load_result {
-                Ok(Ok(model)) => {
-                    *model_lock = Some(model);
-                    info!("Embedding model loaded");
-                }
-                Ok(Err(e)) => return Err(e),
-                Err(_) => {
-                    return Err(HollowError::InvalidInput(
-                        "ONNX Runtime failed to load. Ensure the model is downloaded.".to_string()
-                    ));
-                }
-            }
+            let model = EmbeddingModel::load(&model_path, &tokenizer_path)?;
+            *model_lock = Some(model);
+            info!("Embedding model loaded");
         }
 
         // Run inference
