@@ -130,8 +130,12 @@ pub fn init_logging() {
     INIT.call_once(|| {
         use tracing_subscriber::layer::SubscriberExt;
         use tracing_subscriber::util::SubscriberInitExt;
+        use tracing_subscriber::EnvFilter;
+
+        let filter = EnvFilter::new("hollow_core=debug,info");
 
         tracing_subscriber::registry()
+            .with(filter)
             .with(RingBufferLayer)
             .init();
     });
