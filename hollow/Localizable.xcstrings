@@ -469,6 +469,9 @@
     "Keeps a status icon in the menu bar with quick access to stats, inbox, and controls." : {
 
     },
+    "keyword" : {
+
+    },
     "Language" : {
       "localizations" : {
         "zh-Hans" : {
@@ -554,6 +557,9 @@
 
     },
     "No parser plugins available." : {
+
+    },
+    "No results for \"%@\"" : {
 
     },
     "No Selection" : {
@@ -755,7 +761,7 @@
     "Search Files" : {
 
     },
-    "Search files…" : {
+    "Search files… (press Return)" : {
 
     },
     "Search..." : {
@@ -777,6 +783,9 @@
           }
         }
       }
+    },
+    "semantic" : {
+
     },
     "Semantic search: model not downloaded" : {
 
@@ -901,6 +910,9 @@
           }
         }
       }
+    },
+    "Type a query and press Return to search" : {
+
     },
     "Warning" : {
       "localizations" : {
