@@ -714,6 +714,13 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
     func pathExists(path: String) throws  -> Bool
     
     /**
+     * Preload the embedding model into memory so searches are instant.
+     * Call once on app startup from a background thread. No-op if the
+     * model or ONNX Runtime dylib is not downloaded yet.
+     */
+    func preloadEmbeddingModel()  -> Bool
+    
+    /**
      * Reclaim files stuck in the `extracting` state (crashed mid-extraction).
      * Flips them back to pending so the next resume scan picks them up.
      */
@@ -1113,6 +1120,19 @@ open func pathExists(path: String)throws  -> Bool  {
     uniffi_hollow_core_fn_method_hollowcore_path_exists(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(path),$0
+    )
+})
+}
+    
+    /**
+     * Preload the embedding model into memory so searches are instant.
+     * Call once on app startup from a background thread. No-op if the
+     * model or ONNX Runtime dylib is not downloaded yet.
+     */
+open func preloadEmbeddingModel() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_hollow_core_fn_method_hollowcore_preload_embedding_model(
+            self.uniffiCloneHandle(),$0
     )
 })
 }
@@ -2438,6 +2458,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_path_exists() != 15088) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_preload_embedding_model() != 47596) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_reclaim_extracting() != 1627) {

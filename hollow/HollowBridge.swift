@@ -325,6 +325,12 @@ final class HollowBridge: @unchecked Sendable {
         }
     }
 
+    /// Preload embedding model into memory. Call from background thread on startup.
+    nonisolated func preloadEmbeddingModel() -> Bool {
+        guard let core else { return false }
+        return core.preloadEmbeddingModel()
+    }
+
     nonisolated func hybridSearch(query: String, limit: UInt32 = 50) -> [SearchResult] {
         guard let core else { return [] }
         do {

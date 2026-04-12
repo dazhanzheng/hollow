@@ -33,12 +33,17 @@ final class EmbeddingService {
             }
         }
 
-        // On startup, check for files that were indexed but never embedded
-        // (e.g. model was downloaded after extraction, or prior embed failed).
-        // Delay 5s to let the ingestion service finish its startup scan first.
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(5))
-            processAllPending()
+        // On startup: preload the model in the background, then process pending files.
+        Task.detached {
+            let loaded = HollowBridge.shared.preloadEmbeddingModel()
+            if loaded {
+                HollowLogger.embedding.info("Embedding model preloaded")
+            }
+            // After model is ready, process any pending files
+            try? await Task.sleep(for: .seconds(2))
+            await MainActor.run { [weak self] in
+                self?.processAllPending()
+            }
         }
     }
 

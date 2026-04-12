@@ -999,6 +999,25 @@ impl HollowCore {
         Ok(results)
     }
 
+    /// Preload the embedding model into memory so searches are instant.
+    /// Call once on app startup from a background thread. No-op if the
+    /// model or ONNX Runtime dylib is not downloaded yet.
+    pub fn preload_embedding_model(&self) -> bool {
+        let mut model_lock = match self.embedding_model.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if model_lock.is_some() {
+            return true;
+        }
+        match self.try_load_embedding_model(&mut model_lock) {
+            Ok(loaded) => loaded,
+            Err(e) => {
+                info!("Failed to preload embedding model: {}", e);
+                false
+            }
+        }
+    }
 }
 
 impl HollowCore {
