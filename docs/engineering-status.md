@@ -11,7 +11,7 @@
 
 **产品阶段**：阶段一 — 可用的语义入口
 
-**工程阶段**：Batch 2 完成 + Apple Vision OCR Pipeline 完成，**Batch 3（语义理解 + 全文检索）未开始**
+**工程阶段**：Batch 3 完成（全文检索 + 本地 Embedding + 混合检索），**阶段一功能完整**
 
 ---
 
@@ -121,43 +121,63 @@
 
 | 指标 | 数值 |
 |---|---|
-| Rust 测试 | 136 green |
+| Rust 测试 | 158 green |
 | Rust extractors | 9 个（text-only） |
 | Rust image_docs | 4 个（text + image bytes 联合抽取） |
 | Swift extractors | 7 个（Vision OCR） |
 | Settings 插件总数 | 16 个（9 Rust + 7 Swift LOCAL） |
 | 覆盖文件扩展名 | 200+ 种 |
-| Cargo 依赖 | rusqlite, uuid, serde/serde_json, thiserror, uniffi, sha2, time, mime_guess, tracing, infer, chardetng, zstd, encoding_rs, html2text, zip, quick-xml, rtf-parser |
-| Xcode 构建 | Debug clean，无 warning |
+| 全文检索 | FTS5 trigram tokenizer（中英文） |
+| Embedding 模型 | Qwen3-Embedding-0.6B INT8（默认）/ 4B INT8（可选） |
+| Embedding 运行时 | ort (ONNX Runtime) v2，本地推理 |
+| 向量存储 | SQLite BLOB + Rust 暴力 cosine similarity |
+| 混合检索 | Reciprocal Rank Fusion (FTS5 + embedding) |
+| Cargo 依赖 | rusqlite, uuid, serde/serde_json, thiserror, uniffi, sha2, time, mime_guess, tracing, infer, chardetng, zstd, encoding_rs, html2text, zip, quick-xml, rtf-parser, ort, ndarray, tokenizers |
+| Xcode 构建 | Debug clean |
 
 ---
 
-## 未开始：Batch 3 — 语义理解 + 全文检索
+## 已完成：Batch 3 — 语义理解 + 全文检索（2026-04-12）
 
-这是阶段一的**最后一个 batch**，也是 hollow 的核心差异化——没有它，hollow 只是一个"能读各种文件的归档器"。
+### 3a. 全文检索（FTS5）
 
-### 3a. 全文检索（FTS5）— 不依赖 LLM，可先行落地
+- [x] SQLite FTS5 虚拟表 + trigram tokenizer（中英文通用，无需分词词典）
+- [x] `extract_content` / `extract_content_external` 成功后自动写入 FTS5 索引
+- [x] 搜索 FFI：`search(query, limit) -> Vec<SearchResult>`
+- [x] `FtsStore`：index / remove / search 三个方法
+- [x] Swift `SearchView`：搜索栏 + 结果列表 + snippet 展示 + 点击 Reveal in Finder
+- [x] 搜索窗口（`Window("Search", id: "search")`）
+- [x] re-extract 时自动更新 FTS5 索引（DELETE + INSERT）
 
-- [ ] SQLite FTS5 虚拟表 + tokenizer 选型（ICU for CJK / Porter for English）
-- [ ] body_text 解压 → FTS5 写入管线（在 `extract_content` / `extract_content_external` 成功后触发）
-- [ ] 搜索 FFI：`search(query: String, limit: u32) -> Vec<SearchResult>`
-- [ ] Swift 搜索 UI：搜索栏 + 结果列表 + 片段高亮
-- [ ] 增量更新：re-extract 后同步更新 FTS5 索引
+### 3b. 本地 Embedding 管线（修订：不依赖 hollow-server，完全本地）
 
-### 3b. LLM 语义管线 — 依赖 hollow-server 或直连 API
-
-- [ ] hollow-server API proxy：转发 LLM/Embedding 请求到 Claude / OpenAI / 本地模型
-- [ ] 自动摘要（`file_metadata.summary`）
-- [ ] 自动标签（`file_metadata.tags`）
-- [ ] 语义分类（`file_metadata.category`）
-- [ ] Embedding 向量生成 + 向量存储（SQLite vec extension 或外部 Qdrant）
-- [ ] 语义搜索：embedding cosine similarity + rerank
-- [ ] Settings：API key 配置（用户自带，hollow 不当中间商）
+- [x] `EmbeddingStore`：f32 BLOB 存储 + brute-force cosine similarity search
+- [x] `EmbeddingModel`：ONNX Runtime 推理（ort v2 + tokenizers）
+- [x] `ModelManager`：模型下载状态、路径管理、删除
+- [x] Embedding FFI：`embed_file` / `list_embedding_models` / `is_embedding_ready` / `get_embedding_status` / `get_pending_embedding_ids`
+- [x] `embeddings` 表：file_id / embedding BLOB / dimensions / model_name / embedded_at
+- [x] Swift `EmbeddingService`：后台 embedding 处理队列
+- [x] Settings → Models tab：模型列表 + 下载状态 + RAM 警告
+- [x] 首次启动弹窗（`OnboardingModelView`）：Standard / High Quality 两个选项，自动检测 RAM 并提示
 
 ### 3c. 混合检索
 
-- [ ] FTS5 全文检索 + embedding 向量检索 + 元数据过滤 → 统一排序
-- [ ] 自然语言 query 解析（LLM-assisted intent detection）
+- [x] `HybridSearcher`：Reciprocal Rank Fusion 融合 FTS5 + embedding 两路结果
+- [x] `hybrid_search` FFI：自动检测 embedding 模型是否加载，有模型时做混合检索，无模型时回退 FTS5
+- [x] `SearchView` 已切换到 `hybridSearch`
+
+### 未完成 / 推迟到后续迭代
+
+- [ ] 自动摘要（`file_metadata.summary`）— 需要 LLM API
+- [ ] 自动标签（`file_metadata.tags`）— 需要 LLM API
+- [ ] 语义分类（`file_metadata.category`）— 需要 LLM API
+- [ ] 自然语言 query 解析（LLM-assisted intent detection）— 需要 LLM API
+- [ ] hollow-server API proxy — Embedding 已本地化，仅 LLM 特性需要
+- [ ] 模型下载实现（HuggingFace URLSession 下载 + 进度）— UI 已就绪，下载逻辑待接入
+- [ ] EmbeddingService 自动触发（extraction 完成后自动 embed）— Service 已就绪，集成待验证
+
+**相关文档**：
+- Plan: `docs/superpowers/plans/2026-04-12-batch3-semantic-search.md`
 
 ---
 
@@ -188,6 +208,11 @@
 | iWork 抽取路径 | MDItemCopyAttribute (Spotlight importer) | Apple 自己用的路径，比逆向 IWA 稳定 10 倍 | 2026-04-12 |
 | 文档内图像 OCR 位置 | 原位替换 `{{HOLLOW_IMG_N}}` → `[Image: <text>]` | 用户要求无缝按位置拼接 | 2026-04-12 |
 | 用户自带 API key vs 统一后端 | 用户自带 key | 不当数据中介，规避 HIPAA/CCPA/PIPEDA 合规包袱 | 2026-04-12 |
+| FTS5 tokenizer | trigram | 中英文通吃，无需分词词典，最小搜索词 3 字符 | 2026-04-12 |
+| Embedding 模型 | Qwen3-Embedding-0.6B INT8（默认）+ 4B INT8（可选） | 中英双语最优 MMTEB，0.6B 比 BGE-M3 高 7.9%，体积相当 | 2026-04-12 |
+| Embedding 位置 | 完全本地（ort + CoreML EP） | 隐私优先，离线可用，不需要 hollow-server | 2026-04-12 |
+| 向量存储 | SQLite BLOB + Rust cosine similarity | <100k 文件暴力搜索 <10ms，无需外部向量数据库 | 2026-04-12 |
+| 混合检索算法 | Reciprocal Rank Fusion (k=60) | 简单有效，无需调参，FTS5 和 embedding 各自排序后融合 | 2026-04-12 |
 
 ---
 
@@ -197,3 +222,4 @@
 - [架构总览](architecture/overview.md) — 五层架构
 - [CEP 设计 Spec](superpowers/specs/2026-04-10-content-extraction-pipeline-design.md) — 内容解析管线设计
 - [CEP 实施计划](superpowers/plans/2026-04-10-content-extraction-pipeline-plan.md) — 内容解析管线实施步骤
+- [Batch 3 实施计划](superpowers/plans/2026-04-12-batch3-semantic-search.md) — 全文检索 + Embedding + 混合检索
