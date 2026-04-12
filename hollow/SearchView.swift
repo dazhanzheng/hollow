@@ -15,6 +15,10 @@ struct SearchView: View {
                 TextField("Search files… (press Return)", text: $query)
                     .textFieldStyle(.plain)
                     .onSubmit { performSearch() }
+                    .onChange(of: query) {
+                        // Reset searched state when user edits query
+                        hasSearched = false
+                    }
                 if !query.isEmpty {
                     Button {
                         query = ""
