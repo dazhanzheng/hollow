@@ -73,39 +73,51 @@ impl EmbeddingModel {
         };
 
         let output = &outputs[0];
-        let (shape, data) = output
-            .try_extract_tensor::<f32>()
-            .map_err(|e| HollowError::InvalidInput(format!("Extract tensor: {}", e)))?;
 
-        let embedding = if shape.len() == 3 {
-            // [1, seq_len, dim] — mean pooling
-            let seq = shape[1] as usize;
-            let dim = shape[2] as usize;
-            let mut pooled = vec![0.0_f32; dim];
-            for s in 0..seq {
-                for d in 0..dim {
-                    pooled[d] += data[s * dim + d];
-                }
-            }
-            for d in 0..dim {
-                pooled[d] /= seq as f32;
-            }
-            pooled
-        } else if shape.len() == 2 {
-            // [1, dim] — already pooled
-            data.to_vec()
+        // Try f32 first, fall back to u8 (uint8 quantized models output u8).
+        let float_data: Vec<f32> = if let Ok((shape, data)) = output.try_extract_tensor::<f32>() {
+            extract_embedding(&shape, data)?
+        } else if let Ok((shape, data)) = output.try_extract_tensor::<u8>() {
+            let as_float: Vec<f32> = data.iter().map(|&v| v as f32 / 255.0).collect();
+            extract_embedding(&shape, &as_float)?
         } else {
-            return Err(HollowError::InvalidInput(format!(
-                "Unexpected output shape: {:?}",
-                &*shape
-            )));
+            return Err(HollowError::InvalidInput(
+                "Cannot extract embedding: unsupported tensor type".to_string(),
+            ));
         };
+
+        let embedding = float_data;
 
         Ok(l2_normalize(&embedding))
     }
 
     pub fn dimensions(&self) -> usize {
         self.dimensions
+    }
+}
+
+/// Extract a 1-D embedding from a [1, dim] or [1, seq_len, dim] tensor (mean-pool if 3-D).
+fn extract_embedding(shape: &[i64], data: &[f32]) -> Result<Vec<f32>, HollowError> {
+    if shape.len() == 3 {
+        let seq = shape[1] as usize;
+        let dim = shape[2] as usize;
+        let mut pooled = vec![0.0_f32; dim];
+        for s in 0..seq {
+            for d in 0..dim {
+                pooled[d] += data[s * dim + d];
+            }
+        }
+        for v in &mut pooled {
+            *v /= seq as f32;
+        }
+        Ok(pooled)
+    } else if shape.len() == 2 {
+        Ok(data.to_vec())
+    } else {
+        Err(HollowError::InvalidInput(format!(
+            "Unexpected output shape: {:?}",
+            shape
+        )))
     }
 }
 
