@@ -41,7 +41,7 @@ impl HybridSearcher {
         if let Some(embedding) = query_embedding {
             let vec_results = EmbeddingStore::search(conn, embedding, (limit * 2) as usize)?;
             for (rank, result) in vec_results.iter().enumerate() {
-                if result.score < 0.3 { continue; }
+                if result.score < 0.5 { continue; }
                 let rrf_score = 1.0 / (k + rank as f32 + 1.0);
                 let entry = scores.entry(result.file_id.clone()).or_insert((0.0, None, Vec::new()));
                 entry.0 += rrf_score;
