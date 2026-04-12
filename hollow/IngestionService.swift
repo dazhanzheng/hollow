@@ -2,6 +2,10 @@ import Foundation
 import Observation
 import os
 
+extension Notification.Name {
+    static let fileIndexed = Notification.Name("com.syncpulse.hollow.fileIndexed")
+}
+
 // MARK: - Operations
 
 /// Runs metadata intake (fast: filesystem metadata + quick_hash).
@@ -322,6 +326,8 @@ final class IngestionService {
             extractionsCompleted += 1
             lastExtractionError = nil
             HollowLogger.ingestion.info("Extracted: \(fileId) (\(result.bodyTextBytes) bytes, \(result.extractorName ?? "?"))")
+            // Notify that a new file was indexed (embedding service listens)
+            NotificationCenter.default.post(name: .fileIndexed, object: nil)
         case "missing":
             HollowLogger.ingestion.info("Skipped missing file: \(fileId)")
         case "unsupported":

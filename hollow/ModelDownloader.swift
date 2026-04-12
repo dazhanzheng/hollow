@@ -12,14 +12,16 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
 
     /// Download the 0.6B INT8 model from HuggingFace.
     /// Creates the destination directory if needed.
+    /// Also ensures the ONNX Runtime dylib is present.
     func downloadDefaultModel() async throws {
         let modelsBase = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first!
-            .appendingPathComponent("com.syncpulse.hollow/models/qwen3-embedding-0.6b-int8")
+            .appendingPathComponent("com.syncpulse.hollow/models")
 
-        try FileManager.default.createDirectory(at: modelsBase, withIntermediateDirectories: true)
+        let modelDir = modelsBase.appendingPathComponent("qwen3-embedding-0.6b-int8")
+        try FileManager.default.createDirectory(at: modelDir, withIntermediateDirectories: true)
 
         await MainActor.run {
             isDownloading = true
@@ -28,15 +30,24 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
         }
 
         do {
+            // Step 0: Ensure ONNX Runtime dylib is available (~30 MB)
+            try await ensureOnnxRuntime(modelsBase: modelsBase)
+
             // Download model file (~585 MB)
             let modelURL = URL(string: "https://huggingface.co/onnx-community/Qwen3-Embedding-0.6B-ONNX/resolve/main/onnx/model_int8.onnx")!
-            let modelDest = modelsBase.appendingPathComponent("model.onnx")
-            try await downloadFile(from: modelURL, to: modelDest, progressWeight: 0.95)
+            let modelDest = modelDir.appendingPathComponent("model.onnx")
+            try await downloadFile(from: modelURL, to: modelDest, progressWeight: 0.90)
 
             // Download tokenizer (~7 MB, fast)
             let tokenizerURL = URL(string: "https://huggingface.co/onnx-community/Qwen3-Embedding-0.6B-ONNX/resolve/main/tokenizer.json")!
-            let tokenizerDest = modelsBase.appendingPathComponent("tokenizer.json")
+            let tokenizerDest = modelDir.appendingPathComponent("tokenizer.json")
             try await downloadFile(from: tokenizerURL, to: tokenizerDest, progressWeight: 0.05)
+
+            // Set ORT_DYLIB_PATH immediately so the user doesn't need to restart
+            let dylibPath = modelsBase.appendingPathComponent("libonnxruntime.dylib").path
+            if FileManager.default.fileExists(atPath: dylibPath) {
+                setenv("ORT_DYLIB_PATH", dylibPath, 1)
+            }
 
             await MainActor.run {
                 isDownloading = false
@@ -46,7 +57,7 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
             HollowLogger.embedding.info("Model download complete")
         } catch {
             // Clean up partial downloads on failure
-            try? FileManager.default.removeItem(at: modelsBase)
+            try? FileManager.default.removeItem(at: modelDir)
 
             await MainActor.run {
                 self.isDownloading = false
@@ -56,6 +67,54 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
             HollowLogger.embedding.error("Model download failed: \(error)")
             throw error
         }
+    }
+
+    /// Download and extract the ONNX Runtime dylib if not already present.
+    private func ensureOnnxRuntime(modelsBase: URL) async throws {
+        let dylibDest = modelsBase.appendingPathComponent("libonnxruntime.dylib")
+        guard !FileManager.default.fileExists(atPath: dylibDest.path) else { return }
+
+        let tgzURL = URL(string: "https://github.com/microsoft/onnxruntime/releases/download/v1.22.0/onnxruntime-osx-arm64-1.22.0.tgz")!
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Download tgz
+        let tgzDest = tempDir.appendingPathComponent("ort.tgz")
+        let (tgzTempURL, _) = try await URLSession.shared.download(from: tgzURL)
+        try FileManager.default.moveItem(at: tgzTempURL, to: tgzDest)
+
+        // Extract
+        let extractDir = tempDir.appendingPathComponent("extracted")
+        try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        process.arguments = ["xzf", tgzDest.path, "-C", extractDir.path]
+        try process.run()
+        process.waitUntilExit()
+
+        // Find the dylib — prefer the unversioned name (symlink), fall back to versioned
+        let enumerator = FileManager.default.enumerator(at: extractDir, includingPropertiesForKeys: nil)
+        while let fileURL = enumerator?.nextObject() as? URL {
+            if fileURL.lastPathComponent.hasPrefix("libonnxruntime.") && fileURL.pathExtension == "dylib" && !fileURL.lastPathComponent.contains(".1.") {
+                try FileManager.default.copyItem(at: fileURL, to: dylibDest)
+                HollowLogger.embedding.info("ONNX Runtime dylib installed")
+                return
+            }
+        }
+
+        // If symlink not found, try versioned file
+        let enumerator2 = FileManager.default.enumerator(at: extractDir, includingPropertiesForKeys: nil)
+        while let fileURL = enumerator2?.nextObject() as? URL {
+            if fileURL.lastPathComponent.contains("libonnxruntime") && fileURL.pathExtension == "dylib" {
+                try FileManager.default.copyItem(at: fileURL, to: dylibDest)
+                HollowLogger.embedding.info("ONNX Runtime dylib installed (versioned)")
+                return
+            }
+        }
+
+        throw URLError(.cannotCreateFile, userInfo: [NSLocalizedDescriptionKey: "Could not find libonnxruntime.dylib in downloaded archive"])
     }
 
     func cancel() {

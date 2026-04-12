@@ -21,6 +21,15 @@ final class HollowBridge: @unchecked Sendable {
     }
 
     private init() {
+        // Set ONNX Runtime dylib path for the ort crate's load-dynamic feature
+        // before any embedding calls happen.
+        if let modelsDir = try? Self.modelsDirectory() {
+            let dylibPath = modelsDir.appendingPathComponent("libonnxruntime.dylib").path
+            if FileManager.default.fileExists(atPath: dylibPath) {
+                setenv("ORT_DYLIB_PATH", dylibPath, 1)
+            }
+        }
+
         do {
             let dbPath = try Self.databasePath()
             core = try HollowCore(dbPath: dbPath) as any HollowCoreProtocol
@@ -57,6 +66,14 @@ final class HollowBridge: @unchecked Sendable {
         UserDefaults.standard.set(enabled, forKey: Self.pluginEnabledKey(name))
         guard let core else { return }
         core.setExtractorEnabled(name: name, enabled: enabled)
+    }
+
+    static func modelsDirectory() throws -> URL {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!
+        return appSupport.appendingPathComponent("com.syncpulse.hollow/models")
     }
 
     static func databasePath() throws -> String {
