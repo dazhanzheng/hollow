@@ -4,6 +4,9 @@
     "" : {
 
     },
+    "(empty)" : {
+
+    },
     "%lld" : {
 
     },
@@ -50,6 +53,9 @@
         }
       }
     },
+    "Advanced" : {
+
+    },
     "All Levels" : {
       "localizations" : {
         "zh-Hans" : {
@@ -59,6 +65,9 @@
           }
         }
       }
+    },
+    "Approval required — open System Settings → Login Items." : {
+
     },
     "Auto" : {
       "localizations" : {
@@ -164,6 +173,9 @@
         }
       }
     },
+    "Disabled plugins are skipped during content extraction. Affected files will be marked as unsupported until you re-enable the plugin and re-extract them." : {
+
+    },
     "Done, I've Added It" : {
       "localizations" : {
         "zh-Hans" : {
@@ -183,6 +195,9 @@
           }
         }
       }
+    },
+    "Enable" : {
+
     },
     "English" : {
 
@@ -211,10 +226,19 @@
     "Extension does not match detected format: %@" : {
 
     },
+    "Extracted" : {
+
+    },
+    "Extracting" : {
+
+    },
     "Extraction workers" : {
 
     },
     "Extraction: %@" : {
+
+    },
+    "Failed" : {
 
     },
     "File" : {
@@ -227,6 +251,9 @@
           }
         }
       }
+    },
+    "Files tracked" : {
+
     },
     "Filter by name..." : {
       "localizations" : {
@@ -259,6 +286,9 @@
         }
       }
     },
+    "General" : {
+
+    },
     "Hashes" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -289,6 +319,9 @@
           }
         }
       }
+    },
+    "Hollow works best when it's always running in the background — new files in your Inbox get picked up immediately, and the menu bar icon is always available.\n\nYou can change this anytime in Settings → General." : {
+
     },
     "ID" : {
       "extractionState" : "stale",
@@ -354,6 +387,9 @@
         }
       }
     },
+    "Keeps a status icon in the menu bar with quick access to stats, inbox, and controls." : {
+
+    },
     "Language" : {
       "localizations" : {
         "zh-Hans" : {
@@ -363,6 +399,12 @@
           }
         }
       }
+    },
+    "Launch Hollow at login" : {
+
+    },
+    "Launch Hollow at Login?" : {
+
     },
     "Level" : {
       "localizations" : {
@@ -374,6 +416,9 @@
         }
       }
     },
+    "LOCAL" : {
+
+    },
     "Log Viewer" : {
       "localizations" : {
         "zh-Hans" : {
@@ -383,6 +428,9 @@
           }
         }
       }
+    },
+    "Menu Bar" : {
+
     },
     "MIME" : {
       "extractionState" : "stale",
@@ -417,7 +465,13 @@
         }
       }
     },
+    "No content extracted yet." : {
+
+    },
     "No files" : {
+
+    },
+    "No parser plugins available." : {
 
     },
     "No Selection" : {
@@ -430,6 +484,9 @@
         }
       }
     },
+    "Not Now" : {
+
+    },
     "Not watching" : {
       "localizations" : {
         "zh-Hans" : {
@@ -439,6 +496,18 @@
           }
         }
       }
+    },
+    "Number of parallel workers used for metadata intake and content extraction. Derived from CPU core count." : {
+
+    },
+    "Open" : {
+
+    },
+    "Open Inbox in Finder" : {
+
+    },
+    "Open Main Window" : {
+
     },
     "Original" : {
       "extractionState" : "stale",
@@ -451,6 +520,9 @@
         }
       }
     },
+    "Parser Plugins" : {
+
+    },
     "Paths" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -462,7 +534,16 @@
         }
       }
     },
+    "Pause Watching" : {
+
+    },
+    "Paused" : {
+
+    },
     "Performance" : {
+
+    },
+    "Plugins" : {
 
     },
     "Quick Hash" : {
@@ -485,6 +566,9 @@
           }
         }
       }
+    },
+    "Quit Hollow" : {
+
     },
     "Re-extract content for selected file" : {
 
@@ -528,6 +612,9 @@
           }
         }
       }
+    },
+    "Resume Watching" : {
+
     },
     "Reveal in Finder" : {
       "localizations" : {
@@ -579,6 +666,12 @@
         }
       }
     },
+    "Settings…" : {
+
+    },
+    "Show Hollow in menu bar" : {
+
+    },
     "Shows Debug menu in the menu bar with database browser and log viewer." : {
       "localizations" : {
         "zh-Hans" : {
@@ -613,6 +706,9 @@
           }
         }
       }
+    },
+    "Startup" : {
+
     },
     "Status" : {
       "extractionState" : "stale",
@@ -698,6 +794,12 @@
           }
         }
       }
+    },
+    "Watching Inbox" : {
+
+    },
+    "When enabled, Hollow starts automatically when you log in and runs quietly in the menu bar." : {
+
     },
     "简体中文" : {
 

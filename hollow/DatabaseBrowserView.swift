@@ -206,6 +206,8 @@ struct DatabaseBrowserView: View {
 
 private struct DetailPanel: View {
     let file: FileRecord
+    @State private var bodyText: String?
+    @State private var isLoadingBody = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -242,9 +244,39 @@ private struct DetailPanel: View {
                 row("Quick Hash", file.quickHash.isEmpty ? "—" : file.quickHash)
                 row("Full Hash", file.hash.isEmpty ? "—" : file.hash)
             }
+
+            section("Extracted Content") {
+                if isLoadingBody {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if let text = bodyText {
+                    if text.isEmpty {
+                        Text("(empty)")
+                            .foregroundStyle(.secondary)
+                            .italic()
+                    } else {
+                        Text(text.prefix(5000) + (text.count > 5000 ? "\n\n… (\(text.count) chars total)" : ""))
+                            .font(.system(.caption, design: .monospaced))
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } else {
+                    Text("No content extracted yet.")
+                        .foregroundStyle(.secondary)
+                        .italic()
+                }
+            }
         }
         .padding(20)
         .textSelection(.enabled)
+        .task(id: file.id) {
+            isLoadingBody = true
+            let fid = file.id
+            bodyText = await Task.detached {
+                HollowBridge.shared.getBodyText(fileId: fid)
+            }.value
+            isLoadingBody = false
+        }
     }
 
     private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
