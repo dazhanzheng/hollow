@@ -363,6 +363,11 @@ int8_t uniffi_hollow_core_fn_method_hollowcore_path_exists(uint64_t ptr, RustBuf
 uint32_t uniffi_hollow_core_fn_method_hollowcore_reclaim_extracting(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_SEARCH
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_SEARCH
+RustBuffer uniffi_hollow_core_fn_method_hollowcore_search(uint64_t ptr, RustBuffer query, uint32_t limit, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_SET_EXTRACTOR_ENABLED
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_SET_EXTRACTOR_ENABLED
 void uniffi_hollow_core_fn_method_hollowcore_set_extractor_enabled(uint64_t ptr, RustBuffer name, int8_t enabled, RustCallStatus *_Nonnull out_status
@@ -751,6 +756,12 @@ uint16_t uniffi_hollow_core_checksum_method_hollowcore_path_exists(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_RECLAIM_EXTRACTING
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_RECLAIM_EXTRACTING
 uint16_t uniffi_hollow_core_checksum_method_hollowcore_reclaim_extracting(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_SEARCH
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_SEARCH
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_search(void
     
 );
 #endif

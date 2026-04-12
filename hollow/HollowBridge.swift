@@ -277,4 +277,15 @@ final class HollowBridge: @unchecked Sendable {
         guard let core else { return 0 }
         return (try? core.reclaimExtracting()) ?? 0
     }
+
+    /// Full-text search across all indexed content.
+    nonisolated func search(query: String, limit: UInt32 = 50) -> [SearchResult] {
+        guard let core else { return [] }
+        do {
+            return try core.search(query: query, limit: limit)
+        } catch {
+            HollowLogger.search.error("Search failed: \(error)")
+            return []
+        }
+    }
 }

@@ -110,6 +110,11 @@ struct hollowApp: App {
                 .environment(\.locale, activeLocale)
         }
 
+        Window("Search", id: "search") {
+            SearchView()
+        }
+        .defaultSize(width: 600, height: 500)
+
         MenuBarExtra(
             "Hollow",
             systemImage: ingestionService.isWatching ? "archivebox.fill" : "archivebox",

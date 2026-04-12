@@ -467,6 +467,22 @@ fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
+    typealias FfiType = Double
+    typealias SwiftType = Double
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Double {
+        return try lift(readDouble(&buf))
+    }
+
+    public static func write(_ value: Double, into buf: inout [UInt8]) {
+        writeDouble(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
@@ -669,6 +685,12 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
      * Flips them back to pending so the next resume scan picks them up.
      */
     func reclaimExtracting() throws  -> UInt32
+    
+    /**
+     * Full-text search across all indexed file content.
+     * Returns results ranked by FTS5 relevance, enriched with file metadata.
+     */
+    func search(query: String, limit: UInt32) throws  -> [SearchResult]
     
     /**
      * Enable or disable a specific extractor plugin by name. Disabled plugins
@@ -998,6 +1020,20 @@ open func reclaimExtracting()throws  -> UInt32  {
     return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
     uniffi_hollow_core_fn_method_hollowcore_reclaim_extracting(
             self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
+    /**
+     * Full-text search across all indexed file content.
+     * Returns results ranked by FTS5 relevance, enriched with file metadata.
+     */
+open func search(query: String, limit: UInt32)throws  -> [SearchResult]  {
+    return try  FfiConverterSequenceTypeSearchResult.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_search(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(query),
+        FfiConverterUInt32.lower(limit),$0
     )
 })
 }
@@ -1557,6 +1593,72 @@ public func FfiConverterTypeLogEntry_lower(_ value: LogEntry) -> RustBuffer {
 }
 
 
+public struct SearchResult: Equatable, Hashable {
+    public var fileId: String
+    public var fileName: String
+    public var currentPath: String
+    public var snippet: String
+    public var rank: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(fileId: String, fileName: String, currentPath: String, snippet: String, rank: Double) {
+        self.fileId = fileId
+        self.fileName = fileName
+        self.currentPath = currentPath
+        self.snippet = snippet
+        self.rank = rank
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SearchResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSearchResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SearchResult {
+        return
+            try SearchResult(
+                fileId: FfiConverterString.read(from: &buf), 
+                fileName: FfiConverterString.read(from: &buf), 
+                currentPath: FfiConverterString.read(from: &buf), 
+                snippet: FfiConverterString.read(from: &buf), 
+                rank: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SearchResult, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.fileId, into: &buf)
+        FfiConverterString.write(value.fileName, into: &buf)
+        FfiConverterString.write(value.currentPath, into: &buf)
+        FfiConverterString.write(value.snippet, into: &buf)
+        FfiConverterDouble.write(value.rank, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSearchResult_lift(_ buf: RustBuffer) throws -> SearchResult {
+    return try FfiConverterTypeSearchResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSearchResult_lower(_ value: SearchResult) -> RustBuffer {
+    return FfiConverterTypeSearchResult.lower(value)
+}
+
+
 public enum HollowError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
@@ -1962,6 +2064,31 @@ fileprivate struct FfiConverterSequenceTypeLogEntry: FfiConverterRustBuffer {
     }
 }
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeSearchResult: FfiConverterRustBuffer {
+    typealias SwiftType = [SearchResult]
+
+    public static func write(_ value: [SearchResult], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSearchResult.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SearchResult] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SearchResult]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSearchResult.read(from: &buf))
+        }
+        return seq
+    }
+}
+
 private enum InitializationResult {
     case ok
     case contractVersionMismatch
@@ -2038,6 +2165,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_reclaim_extracting() != 1627) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_search() != 51078) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_set_extractor_enabled() != 3390) {
