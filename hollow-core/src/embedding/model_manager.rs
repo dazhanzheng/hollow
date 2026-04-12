@@ -36,7 +36,7 @@ impl ModelManager {
                 display_name: "Qwen3 Embedding 0.6B (INT8)".to_string(),
                 description: "Recommended. Good quality for Chinese + English, runs on any Mac."
                     .to_string(),
-                download_size_mb: 586,
+                download_size_mb: 624,
                 ram_usage_mb: 400,
                 dimensions: 1024,
             },

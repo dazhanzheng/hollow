@@ -294,12 +294,13 @@ private struct ModelsSettingsView: View {
     @State private var models: [EmbeddingModelInfo] = []
     @State private var embeddingStatus: EmbeddingStatus?
     @State private var refreshID = UUID()
+    @State private var downloader = ModelDownloader()
 
     var body: some View {
         Form {
             Section {
                 ForEach(models, id: \.name) { model in
-                    ModelRow(model: model, onDownloadComplete: {
+                    ModelRow(model: model, downloader: downloader, onDownloadComplete: {
                         refreshID = UUID()
                     })
                 }
@@ -368,8 +369,8 @@ private struct ModelsSettingsView: View {
 
 private struct ModelRow: View {
     let model: EmbeddingModelInfo
+    var downloader: ModelDownloader
     var onDownloadComplete: (() -> Void)?
-    @State private var downloader = ModelDownloader()
 
     var body: some View {
         HStack {

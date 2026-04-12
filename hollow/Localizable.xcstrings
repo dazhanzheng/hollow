@@ -43,6 +43,37 @@
         }
       }
     },
+    "%lld%%" : {
+
+    },
+    "%u" : {
+
+    },
+    "%u embedded" : {
+
+    },
+    "%u/%u embedded" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$u/%2$u embedded"
+          }
+        }
+      }
+    },
+    "~3 GB RAM" : {
+
+    },
+    "~8 GB download" : {
+
+    },
+    "~400 MB RAM" : {
+
+    },
+    "~586 MB download" : {
+
+    },
     "Add Hollow Inbox to Finder Sidebar" : {
       "localizations" : {
         "zh-Hans" : {
@@ -79,7 +110,13 @@
         }
       }
     },
+    "Better accuracy, higher resource usage" : {
+
+    },
     "Cancel" : {
+
+    },
+    "Coming soon" : {
 
     },
     "Compute full SHA-256 hash for all files" : {
@@ -154,6 +191,9 @@
         }
       }
     },
+    "Delete" : {
+
+    },
     "Delete and Quit" : {
 
     },
@@ -186,6 +226,21 @@
         }
       }
     },
+    "Download" : {
+
+    },
+    "Download an embedding model to search files by meaning, not just keywords. Models run entirely on your Mac — nothing leaves your device." : {
+
+    },
+    "Download: %llu MB" : {
+
+    },
+    "Downloaded automatically with the first model." : {
+
+    },
+    "Downloading model… %lld%%" : {
+
+    },
     "Drag the \"Hollow Inbox\" folder into Finder's sidebar under Favorites" : {
       "localizations" : {
         "zh-Hans" : {
@@ -195,6 +250,18 @@
           }
         }
       }
+    },
+    "Embed All Now" : {
+
+    },
+    "Embedding Models" : {
+
+    },
+    "Embedding models enable semantic search — finding files by meaning, not just keywords. Models run locally on your Mac." : {
+
+    },
+    "Embedding Status" : {
+
     },
     "Enable" : {
 
@@ -251,6 +318,12 @@
           }
         }
       }
+    },
+    "Files embedded" : {
+
+    },
+    "Files indexed" : {
+
     },
     "Files tracked" : {
 
@@ -309,6 +382,9 @@
           }
         }
       }
+    },
+    "High Quality" : {
+
     },
     "Hollow" : {
       "localizations" : {
@@ -387,6 +463,9 @@
         }
       }
     },
+    "Installed" : {
+
+    },
     "Keeps a status icon in the menu bar with quick access to stats, inbox, and controls." : {
 
     },
@@ -443,6 +522,9 @@
         }
       }
     },
+    "Models" : {
+
+    },
     "Modified" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -484,6 +566,9 @@
         }
       }
     },
+    "Not installed" : {
+
+    },
     "Not Now" : {
 
     },
@@ -498,6 +583,9 @@
       }
     },
     "Number of parallel workers used for metadata intake and content extraction. Derived from CPU core count." : {
+
+    },
+    "ONNX Runtime" : {
 
     },
     "Open" : {
@@ -540,6 +628,9 @@
     "Paused" : {
 
     },
+    "Pending" : {
+
+    },
     "Performance" : {
 
     },
@@ -570,6 +661,9 @@
     "Quit Hollow" : {
 
     },
+    "RAM: ~%llu MB" : {
+
+    },
     "Re-extract content for selected file" : {
 
     },
@@ -582,6 +676,12 @@
           }
         }
       }
+    },
+    "RECOMMENDED" : {
+
+    },
+    "Recommended for all Macs" : {
+
     },
     "Refresh" : {
       "localizations" : {
@@ -636,6 +736,9 @@
         }
       }
     },
+    "Runtime" : {
+
+    },
     "Rust" : {
       "localizations" : {
         "zh-Hans" : {
@@ -645,6 +748,15 @@
           }
         }
       }
+    },
+    "Search" : {
+
+    },
+    "Search Files" : {
+
+    },
+    "Search files…" : {
+
     },
     "Search..." : {
       "localizations" : {
@@ -665,6 +777,15 @@
           }
         }
       }
+    },
+    "Semantic search: model not downloaded" : {
+
+    },
+    "Semantic search: runtime missing" : {
+
+    },
+    "Set Up Semantic Search" : {
+
     },
     "Settings…" : {
 
@@ -693,7 +814,13 @@
         }
       }
     },
+    "Skip for now" : {
+
+    },
     "Source file no longer exists on disk" : {
+
+    },
+    "Standard" : {
 
     },
     "Starting..." : {
@@ -799,6 +926,12 @@
 
     },
     "When enabled, Hollow starts automatically when you log in and runs quietly in the menu bar." : {
+
+    },
+    "Your Mac has %llu GB RAM — this model may slow down other apps while embedding." : {
+
+    },
+    "Your Mac has %llu GB RAM. This model may slow down other apps." : {
 
     },
     "简体中文" : {
