@@ -95,9 +95,8 @@ impl EmbeddingModel {
             ));
         };
 
-        // The uint8 model README says "without normalization" — skip L2 norm.
-        // For f32 models, normalizing is still correct.
-        Ok(float_data)
+        // L2 normalize so cosine similarity is in a meaningful 0..1 range.
+        Ok(l2_normalize(&float_data))
     }
 
     pub fn dimensions(&self) -> usize {
