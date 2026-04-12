@@ -529,6 +529,24 @@ fileprivate struct FfiConverterString: FfiConverter {
     }
 }
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterData: FfiConverterRustBuffer {
+    typealias SwiftType = Data
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
+        let len: Int32 = try readInt(&buf)
+        return Data(try readBytes(&buf, count: Int(len)))
+    }
+
+    public static func write(_ value: Data, into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        writeBytes(&buf, value)
+    }
+}
+
 
 
 
@@ -550,9 +568,51 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
     func extractContent(fileId: String) throws  -> ExtractContentResult
     
     /**
+     * Store an extraction outcome produced outside the Rust ContentPipeline
+     * (e.g. by the Swift-side Apple Vision OCR pipeline for images and PDFs).
+     *
+     * Takes the same state-machine path as `extract_content` — mark extracting,
+     * guard against file-vanished races, update detected_mime, write compressed
+     * body into `file_content`, flip `files.status` — but bypasses the pipeline
+     * run entirely, using caller-supplied values instead.
+     *
+     * `status` must be one of `"indexed"`, `"extract_failed"`, `"unsupported"`.
+     * For `"indexed"` the `body_text` argument is used as the content;
+     * for `"extract_failed"` the `error` argument is stored on file_content.
+     */
+    func extractContentExternal(fileId: String, status: String, bodyText: String?, extractorName: String, detectedMime: String, encoding: String?, error: String?) throws  -> ExtractContentResult
+    
+    /**
+     * Extract a zip-based document's text layer + embedded image bytes,
+     * for handoff to Swift-side Apple Vision OCR. The returned template
+     * has `{{HOLLOW_IMG_N}}` placeholders where images appear, and the
+     * `images` array holds the raw bytes of each referenced image in
+     * placeholder order.
+     *
+     * Returns `Ok(None)` for file types without an image-aware
+     * extractor (anything other than .docx/.pptx/.odt/.ods/.odp/.epub) —
+     * the caller should fall back to the regular text-only extraction
+     * path.
+     *
+     * Does **not** touch the file's status in the database — the Swift
+     * caller owns the state transition and commits via
+     * `extract_content_external` once it has OCR'd and merged the
+     * final text.
+     */
+    func extractWithImages(fileId: String) throws  -> ExtractWithImagesResult?
+    
+    /**
      * Look up a file's UUID by its current path.
      */
     func fileIdForPath(path: String) throws  -> String?
+    
+    /**
+     * Read back the extracted body text for a file. Decompresses the
+     * zstd-compressed blob stored in `file_content.body_text_compressed`.
+     * Returns `Ok(None)` if no content row exists for this file (e.g.
+     * still pending or unsupported).
+     */
+    func getBodyText(fileId: String) throws  -> String?
     
     func getFile(id: String) throws  -> FileRecord?
     
@@ -579,6 +639,11 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
      */
     func ingestFile(filePath: String) throws  -> FileRecord
     
+    /**
+     * List all built-in extractor plugins. Static; does not hit the database.
+     */
+    func listExtractors()  -> [ExtractorPluginInfo]
+    
     func listFiles(limit: UInt32, offset: UInt32) throws  -> [FileRecord]
     
     /**
@@ -604,6 +669,13 @@ public protocol HollowCoreProtocol: AnyObject, Sendable {
      * Flips them back to pending so the next resume scan picks them up.
      */
     func reclaimExtracting() throws  -> UInt32
+    
+    /**
+     * Enable or disable a specific extractor plugin by name. Disabled plugins
+     * are bypassed by the pipeline and matching files are reported as
+     * `unsupported` instead of being extracted.
+     */
+    func setExtractorEnabled(name: String, enabled: Bool) 
     
 }
 open class HollowCore: HollowCoreProtocol, @unchecked Sendable {
@@ -709,6 +781,60 @@ open func extractContent(fileId: String)throws  -> ExtractContentResult  {
 }
     
     /**
+     * Store an extraction outcome produced outside the Rust ContentPipeline
+     * (e.g. by the Swift-side Apple Vision OCR pipeline for images and PDFs).
+     *
+     * Takes the same state-machine path as `extract_content` — mark extracting,
+     * guard against file-vanished races, update detected_mime, write compressed
+     * body into `file_content`, flip `files.status` — but bypasses the pipeline
+     * run entirely, using caller-supplied values instead.
+     *
+     * `status` must be one of `"indexed"`, `"extract_failed"`, `"unsupported"`.
+     * For `"indexed"` the `body_text` argument is used as the content;
+     * for `"extract_failed"` the `error` argument is stored on file_content.
+     */
+open func extractContentExternal(fileId: String, status: String, bodyText: String?, extractorName: String, detectedMime: String, encoding: String?, error: String?)throws  -> ExtractContentResult  {
+    return try  FfiConverterTypeExtractContentResult_lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_extract_content_external(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(fileId),
+        FfiConverterString.lower(status),
+        FfiConverterOptionString.lower(bodyText),
+        FfiConverterString.lower(extractorName),
+        FfiConverterString.lower(detectedMime),
+        FfiConverterOptionString.lower(encoding),
+        FfiConverterOptionString.lower(error),$0
+    )
+})
+}
+    
+    /**
+     * Extract a zip-based document's text layer + embedded image bytes,
+     * for handoff to Swift-side Apple Vision OCR. The returned template
+     * has `{{HOLLOW_IMG_N}}` placeholders where images appear, and the
+     * `images` array holds the raw bytes of each referenced image in
+     * placeholder order.
+     *
+     * Returns `Ok(None)` for file types without an image-aware
+     * extractor (anything other than .docx/.pptx/.odt/.ods/.odp/.epub) —
+     * the caller should fall back to the regular text-only extraction
+     * path.
+     *
+     * Does **not** touch the file's status in the database — the Swift
+     * caller owns the state transition and commits via
+     * `extract_content_external` once it has OCR'd and merged the
+     * final text.
+     */
+open func extractWithImages(fileId: String)throws  -> ExtractWithImagesResult?  {
+    return try  FfiConverterOptionTypeExtractWithImagesResult.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_extract_with_images(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(fileId),$0
+    )
+})
+}
+    
+    /**
      * Look up a file's UUID by its current path.
      */
 open func fileIdForPath(path: String)throws  -> String?  {
@@ -716,6 +842,21 @@ open func fileIdForPath(path: String)throws  -> String?  {
     uniffi_hollow_core_fn_method_hollowcore_file_id_for_path(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(path),$0
+    )
+})
+}
+    
+    /**
+     * Read back the extracted body text for a file. Decompresses the
+     * zstd-compressed blob stored in `file_content.body_text_compressed`.
+     * Returns `Ok(None)` if no content row exists for this file (e.g.
+     * still pending or unsupported).
+     */
+open func getBodyText(fileId: String)throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
+    uniffi_hollow_core_fn_method_hollowcore_get_body_text(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(fileId),$0
     )
 })
 }
@@ -785,6 +926,17 @@ open func ingestFile(filePath: String)throws  -> FileRecord  {
 })
 }
     
+    /**
+     * List all built-in extractor plugins. Static; does not hit the database.
+     */
+open func listExtractors() -> [ExtractorPluginInfo]  {
+    return try!  FfiConverterSequenceTypeExtractorPluginInfo.lift(try! rustCall() {
+    uniffi_hollow_core_fn_method_hollowcore_list_extractors(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+    
 open func listFiles(limit: UInt32, offset: UInt32)throws  -> [FileRecord]  {
     return try  FfiConverterSequenceTypeFileRecord.lift(try rustCallWithError(FfiConverterTypeHollowError_lift) {
     uniffi_hollow_core_fn_method_hollowcore_list_files(
@@ -848,6 +1000,20 @@ open func reclaimExtracting()throws  -> UInt32  {
             self.uniffiCloneHandle(),$0
     )
 })
+}
+    
+    /**
+     * Enable or disable a specific extractor plugin by name. Disabled plugins
+     * are bypassed by the pipeline and matching files are reported as
+     * `unsupported` instead of being extracted.
+     */
+open func setExtractorEnabled(name: String, enabled: Bool)  {try! rustCall() {
+    uniffi_hollow_core_fn_method_hollowcore_set_extractor_enabled(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(name),
+        FfiConverterBool.lower(enabled),$0
+    )
+}
 }
     
 
@@ -969,6 +1135,249 @@ public func FfiConverterTypeExtractContentResult_lift(_ buf: RustBuffer) throws 
 #endif
 public func FfiConverterTypeExtractContentResult_lower(_ value: ExtractContentResult) -> RustBuffer {
     return FfiConverterTypeExtractContentResult.lower(value)
+}
+
+
+/**
+ * Text template + image byte payloads for a zip-based document format
+ * (docx / pptx / odt / ods / odp / epub). Used by the Swift side to run
+ * Apple Vision OCR on embedded images and substitute the results back
+ * into the text template at the placeholder positions.
+ *
+ * Returning `None` from `extract_with_images` means "this file type has
+ * no image-aware extractor" — the Swift caller should fall back to the
+ * regular text-only pipeline.
+ */
+public struct ExtractWithImagesResult: Equatable, Hashable {
+    /**
+     * Body text with `{{HOLLOW_IMG_N}}` markers inserted at image
+     * positions.
+     */
+    public var textTemplate: String
+    /**
+     * Image byte payloads, one per marker, in placeholder order.
+     */
+    public var images: [ExtractedImage]
+    /**
+     * Canonical MIME type for this document.
+     */
+    public var detectedMime: String
+    /**
+     * Extractor name to record on `file_content.extractor_name`.
+     * Matches the name used by the corresponding `SwiftExtractor`.
+     */
+    public var extractorName: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Body text with `{{HOLLOW_IMG_N}}` markers inserted at image
+         * positions.
+         */textTemplate: String, 
+        /**
+         * Image byte payloads, one per marker, in placeholder order.
+         */images: [ExtractedImage], 
+        /**
+         * Canonical MIME type for this document.
+         */detectedMime: String, 
+        /**
+         * Extractor name to record on `file_content.extractor_name`.
+         * Matches the name used by the corresponding `SwiftExtractor`.
+         */extractorName: String) {
+        self.textTemplate = textTemplate
+        self.images = images
+        self.detectedMime = detectedMime
+        self.extractorName = extractorName
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ExtractWithImagesResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeExtractWithImagesResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ExtractWithImagesResult {
+        return
+            try ExtractWithImagesResult(
+                textTemplate: FfiConverterString.read(from: &buf), 
+                images: FfiConverterSequenceTypeExtractedImage.read(from: &buf), 
+                detectedMime: FfiConverterString.read(from: &buf), 
+                extractorName: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ExtractWithImagesResult, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.textTemplate, into: &buf)
+        FfiConverterSequenceTypeExtractedImage.write(value.images, into: &buf)
+        FfiConverterString.write(value.detectedMime, into: &buf)
+        FfiConverterString.write(value.extractorName, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExtractWithImagesResult_lift(_ buf: RustBuffer) throws -> ExtractWithImagesResult {
+    return try FfiConverterTypeExtractWithImagesResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExtractWithImagesResult_lower(_ value: ExtractWithImagesResult) -> RustBuffer {
+    return FfiConverterTypeExtractWithImagesResult.lower(value)
+}
+
+
+public struct ExtractedImage: Equatable, Hashable {
+    /**
+     * The bare marker string (`"HOLLOW_IMG_0"`, no wrapping braces) —
+     * Swift builds the full `{{HOLLOW_IMG_0}}` form when substituting.
+     */
+    public var marker: String
+    /**
+     * Raw bytes of the embedded image as stored in the archive.
+     */
+    public var bytes: Data
+    /**
+     * Best-guess IANA MIME type for the image, e.g. "image/png".
+     */
+    public var mime: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The bare marker string (`"HOLLOW_IMG_0"`, no wrapping braces) —
+         * Swift builds the full `{{HOLLOW_IMG_0}}` form when substituting.
+         */marker: String, 
+        /**
+         * Raw bytes of the embedded image as stored in the archive.
+         */bytes: Data, 
+        /**
+         * Best-guess IANA MIME type for the image, e.g. "image/png".
+         */mime: String) {
+        self.marker = marker
+        self.bytes = bytes
+        self.mime = mime
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ExtractedImage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeExtractedImage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ExtractedImage {
+        return
+            try ExtractedImage(
+                marker: FfiConverterString.read(from: &buf), 
+                bytes: FfiConverterData.read(from: &buf), 
+                mime: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ExtractedImage, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.marker, into: &buf)
+        FfiConverterData.write(value.bytes, into: &buf)
+        FfiConverterString.write(value.mime, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExtractedImage_lift(_ buf: RustBuffer) throws -> ExtractedImage {
+    return try FfiConverterTypeExtractedImage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExtractedImage_lower(_ value: ExtractedImage) -> RustBuffer {
+    return FfiConverterTypeExtractedImage.lower(value)
+}
+
+
+/**
+ * Descriptor for a built-in extractor plugin, returned to the settings UI.
+ */
+public struct ExtractorPluginInfo: Equatable, Hashable {
+    public var name: String
+    public var displayName: String
+    public var description: String
+    public var extensions: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, displayName: String, description: String, extensions: [String]) {
+        self.name = name
+        self.displayName = displayName
+        self.description = description
+        self.extensions = extensions
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ExtractorPluginInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeExtractorPluginInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ExtractorPluginInfo {
+        return
+            try ExtractorPluginInfo(
+                name: FfiConverterString.read(from: &buf), 
+                displayName: FfiConverterString.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf), 
+                extensions: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ExtractorPluginInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.displayName, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+        FfiConverterSequenceString.write(value.extensions, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExtractorPluginInfo_lift(_ buf: RustBuffer) throws -> ExtractorPluginInfo {
+    return try FfiConverterTypeExtractorPluginInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeExtractorPluginInfo_lower(_ value: ExtractorPluginInfo) -> RustBuffer {
+    return FfiConverterTypeExtractorPluginInfo.lower(value)
 }
 
 
@@ -1383,6 +1792,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeExtractWithImagesResult: FfiConverterRustBuffer {
+    typealias SwiftType = ExtractWithImagesResult?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeExtractWithImagesResult.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeExtractWithImagesResult.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeFileRecord: FfiConverterRustBuffer {
     typealias SwiftType = FileRecord?
 
@@ -1424,6 +1857,56 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeExtractedImage: FfiConverterRustBuffer {
+    typealias SwiftType = [ExtractedImage]
+
+    public static func write(_ value: [ExtractedImage], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeExtractedImage.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ExtractedImage] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ExtractedImage]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeExtractedImage.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeExtractorPluginInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [ExtractorPluginInfo]
+
+    public static func write(_ value: [ExtractorPluginInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeExtractorPluginInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ExtractorPluginInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ExtractorPluginInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeExtractorPluginInfo.read(from: &buf))
         }
         return seq
     }
@@ -1506,7 +1989,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_hollow_core_checksum_method_hollowcore_extract_content() != 25782) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_hollow_core_checksum_method_hollowcore_extract_content_external() != 44123) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_extract_with_images() != 52921) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_hollow_core_checksum_method_hollowcore_file_id_for_path() != 36005) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_get_body_text() != 62092) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_get_file() != 29901) {
@@ -1527,6 +2019,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_hollow_core_checksum_method_hollowcore_ingest_file() != 36442) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_hollow_core_checksum_method_hollowcore_list_extractors() != 27329) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_hollow_core_checksum_method_hollowcore_list_files() != 25763) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -1543,6 +2038,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_method_hollowcore_reclaim_extracting() != 1627) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_hollow_core_checksum_method_hollowcore_set_extractor_enabled() != 3390) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_hollow_core_checksum_constructor_hollowcore_new() != 43294) {

@@ -11,14 +11,52 @@ final class HollowBridge: @unchecked Sendable {
 
     nonisolated var isReady: Bool { core != nil }
 
+    /// UserDefaults key prefix for per-plugin enable flags. The UI reads/writes
+    /// the same key via @AppStorage; the bridge is the source of truth that
+    /// pushes the state down into the Rust side at startup and on toggle.
+    static let pluginEnabledKeyPrefix = "plugin.enabled."
+
+    static func pluginEnabledKey(_ name: String) -> String {
+        pluginEnabledKeyPrefix + name
+    }
+
     private init() {
         do {
             let dbPath = try Self.databasePath()
             core = try HollowCore(dbPath: dbPath) as any HollowCoreProtocol
+            syncExtractorPreferencesToCore()
         } catch {
             HollowLogger.bridge.error("HollowBridge init failed: \(error)")
             core = nil
         }
+    }
+
+    /// Walk the built-in extractors and push UserDefaults prefs down into Rust.
+    /// Default (no stored value) is enabled. Must run after `core` is set.
+    private func syncExtractorPreferencesToCore() {
+        guard let core else { return }
+        let defaults = UserDefaults.standard
+        for info in core.listExtractors() {
+            let key = Self.pluginEnabledKey(info.name)
+            // Default (missing key) = enabled. Only treat an explicit `false`
+            // stored bool as disabled.
+            let enabled = defaults.object(forKey: key) as? Bool ?? true
+            core.setExtractorEnabled(name: info.name, enabled: enabled)
+        }
+    }
+
+    /// Return all built-in extractor plugins for the settings UI.
+    nonisolated func listExtractors() -> [ExtractorPluginInfo] {
+        guard let core else { return [] }
+        return core.listExtractors()
+    }
+
+    /// Enable or disable an extractor plugin by name. Persists the choice in
+    /// UserDefaults and pushes it down into the Rust pipeline immediately.
+    nonisolated func setExtractorEnabled(name: String, enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: Self.pluginEnabledKey(name))
+        guard let core else { return }
+        core.setExtractorEnabled(name: name, enabled: enabled)
     }
 
     static func databasePath() throws -> String {
@@ -113,6 +151,80 @@ final class HollowBridge: @unchecked Sendable {
             return try core.extractContent(fileId: fileId)
         } catch {
             HollowLogger.bridge.error("extractContent failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Commit an extraction outcome produced by a Swift-side extractor
+    /// (e.g. Apple Vision OCR). Runs the same state machine as
+    /// `extractContent` on the Rust side but uses the supplied body text
+    /// instead of the Rust ContentPipeline. Returns nil on bridge error.
+    nonisolated func extractContentExternal(
+        fileId: String,
+        status: String,
+        bodyText: String?,
+        extractorName: String,
+        detectedMime: String,
+        encoding: String?,
+        error: String?
+    ) -> ExtractContentResult? {
+        guard let core else { return nil }
+        do {
+            return try core.extractContentExternal(
+                fileId: fileId,
+                status: status,
+                bodyText: bodyText,
+                extractorName: extractorName,
+                detectedMime: detectedMime,
+                encoding: encoding,
+                error: error
+            )
+        } catch {
+            HollowLogger.bridge.error("extractContentExternal failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Ask Rust to pull the text layer and embedded image bytes out of
+    /// a zip-based document (docx/pptx/odt/ods/odp/epub). Returns `nil`
+    /// if the file type isn't image-aware or if the file has vanished.
+    ///
+    /// Used by the Swift OCR-enhanced extractors: they get back a
+    /// `text_template` with `{{HOLLOW_IMG_N}}` placeholders plus the
+    /// raw bytes of every referenced image, run Vision on each image,
+    /// and substitute the results into the template.
+    nonisolated func extractWithImages(fileId: String) -> ExtractWithImagesResult? {
+        guard let core else { return nil }
+        do {
+            return try core.extractWithImages(fileId: fileId)
+        } catch {
+            HollowLogger.bridge.error("extractWithImages failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Read back the extracted body text for a file, decompressing the
+    /// zstd blob stored in `file_content`. Returns nil if no content has
+    /// been extracted yet (pending / unsupported / missing).
+    nonisolated func getBodyText(fileId: String) -> String? {
+        guard let core else { return nil }
+        do {
+            return try core.getBodyText(fileId: fileId)
+        } catch {
+            HollowLogger.bridge.error("getBodyText failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    /// Fetch the stored record for a file by id. Used by
+    /// `ContentExtractionOperation` to look up the current path before
+    /// dispatching to either Swift or Rust extraction.
+    nonisolated func getFile(fileId: String) -> FileRecord? {
+        guard let core else { return nil }
+        do {
+            return try core.getFile(id: fileId)
+        } catch {
+            HollowLogger.bridge.error("getFile failed for \(fileId, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }

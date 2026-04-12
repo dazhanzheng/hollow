@@ -278,9 +278,24 @@ RustBuffer uniffi_hollow_core_fn_method_hollowcore_compute_hash(uint64_t ptr, Ru
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_extract_content(uint64_t ptr, RustBuffer file_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_EXTRACT_CONTENT_EXTERNAL
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_EXTRACT_CONTENT_EXTERNAL
+RustBuffer uniffi_hollow_core_fn_method_hollowcore_extract_content_external(uint64_t ptr, RustBuffer file_id, RustBuffer status, RustBuffer body_text, RustBuffer extractor_name, RustBuffer detected_mime, RustBuffer encoding, RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_EXTRACT_WITH_IMAGES
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_EXTRACT_WITH_IMAGES
+RustBuffer uniffi_hollow_core_fn_method_hollowcore_extract_with_images(uint64_t ptr, RustBuffer file_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_FILE_ID_FOR_PATH
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_FILE_ID_FOR_PATH
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_file_id_for_path(uint64_t ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_BODY_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_BODY_TEXT
+RustBuffer uniffi_hollow_core_fn_method_hollowcore_get_body_text(uint64_t ptr, RustBuffer file_id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_GET_FILE
@@ -313,6 +328,11 @@ int8_t uniffi_hollow_core_fn_method_hollowcore_has_changed(uint64_t ptr, RustBuf
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_ingest_file(uint64_t ptr, RustBuffer file_path, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_LIST_EXTRACTORS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_LIST_EXTRACTORS
+RustBuffer uniffi_hollow_core_fn_method_hollowcore_list_extractors(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_LIST_FILES
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_LIST_FILES
 RustBuffer uniffi_hollow_core_fn_method_hollowcore_list_files(uint64_t ptr, uint32_t limit, uint32_t offset, RustCallStatus *_Nonnull out_status
@@ -341,6 +361,11 @@ int8_t uniffi_hollow_core_fn_method_hollowcore_path_exists(uint64_t ptr, RustBuf
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_RECLAIM_EXTRACTING
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_RECLAIM_EXTRACTING
 uint32_t uniffi_hollow_core_fn_method_hollowcore_reclaim_extracting(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_SET_EXTRACTOR_ENABLED
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_FN_METHOD_HOLLOWCORE_SET_EXTRACTOR_ENABLED
+void uniffi_hollow_core_fn_method_hollowcore_set_extractor_enabled(uint64_t ptr, RustBuffer name, int8_t enabled, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_HOLLOW_CORE_RUSTBUFFER_ALLOC
@@ -627,9 +652,27 @@ uint16_t uniffi_hollow_core_checksum_method_hollowcore_extract_content(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_EXTRACT_CONTENT_EXTERNAL
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_EXTRACT_CONTENT_EXTERNAL
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_extract_content_external(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_EXTRACT_WITH_IMAGES
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_EXTRACT_WITH_IMAGES
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_extract_with_images(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_FILE_ID_FOR_PATH
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_FILE_ID_FOR_PATH
 uint16_t uniffi_hollow_core_checksum_method_hollowcore_file_id_for_path(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_BODY_TEXT
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_GET_BODY_TEXT
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_get_body_text(void
     
 );
 #endif
@@ -669,6 +712,12 @@ uint16_t uniffi_hollow_core_checksum_method_hollowcore_ingest_file(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_LIST_EXTRACTORS
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_LIST_EXTRACTORS
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_list_extractors(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_LIST_FILES
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_LIST_FILES
 uint16_t uniffi_hollow_core_checksum_method_hollowcore_list_files(void
@@ -702,6 +751,12 @@ uint16_t uniffi_hollow_core_checksum_method_hollowcore_path_exists(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_RECLAIM_EXTRACTING
 #define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_RECLAIM_EXTRACTING
 uint16_t uniffi_hollow_core_checksum_method_hollowcore_reclaim_extracting(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_SET_EXTRACTOR_ENABLED
+#define UNIFFI_FFIDEF_UNIFFI_HOLLOW_CORE_CHECKSUM_METHOD_HOLLOWCORE_SET_EXTRACTOR_ENABLED
+uint16_t uniffi_hollow_core_checksum_method_hollowcore_set_extractor_enabled(void
     
 );
 #endif

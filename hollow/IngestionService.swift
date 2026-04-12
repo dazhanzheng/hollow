@@ -36,6 +36,13 @@ final class MetadataIntakeOperation: Operation, @unchecked Sendable {
 
 /// Runs content extraction for a file (slow: read + decode + zstd compress + DB write).
 /// Dispatched on IngestionService.contentQueue.
+///
+/// Before falling into the Rust ContentPipeline, this operation asks the
+/// Swift-side `SwiftExtractorRegistry` whether it has a handler for the
+/// file (image/PDF/etc. that need macOS frameworks). When Swift claims it,
+/// OCR runs here and the result is committed via `extractContentExternal`;
+/// otherwise we delegate to the Rust pipeline via `extractContent`.
+///
 /// See MetadataIntakeOperation above for the capture-locals rationale.
 final class ContentExtractionOperation: Operation, @unchecked Sendable {
     let fileId: String
@@ -49,7 +56,93 @@ final class ContentExtractionOperation: Operation, @unchecked Sendable {
 
     override func main() {
         guard !isCancelled else { return }
-        let result = HollowBridge.shared.extractContent(fileId: fileId)
+
+        let bridge = HollowBridge.shared
+
+        // Look up the record so we know the on-disk path. If getFile fails
+        // (e.g. file was deleted from DB), fall through to the Rust path —
+        // it handles "file not found" gracefully by returning nil.
+        if let record = bridge.getFile(fileId: fileId) {
+            let fileURL = URL(fileURLWithPath: record.currentPath)
+            if let swiftExtractor = SwiftExtractorRegistry.shared.find(for: fileURL) {
+                runSwiftExtraction(
+                    extractor: swiftExtractor,
+                    fileURL: fileURL,
+                    record: record,
+                    bridge: bridge
+                )
+                return
+            }
+        }
+
+        runRustExtraction(bridge: bridge)
+    }
+
+    private func runRustExtraction(bridge: HollowBridge) {
+        let result = bridge.extractContent(fileId: fileId)
+        deliverResult(result)
+    }
+
+    private func runSwiftExtraction(
+        extractor: any SwiftExtractor,
+        fileURL: URL,
+        record: FileRecord,
+        bridge: HollowBridge
+    ) {
+        let extractorName = extractor.name
+        let result: ExtractContentResult?
+
+        do {
+            // OCR-enhanced extractors (docx/pptx/odt/ods/odp/epub) need
+            // the fileId to pull image byte blobs from Rust via the
+            // extract_with_images FFI. The plain URL-only protocol
+            // method can't supply that, so we dispatch through the
+            // shared helper instead.
+            let extraction: SwiftExtractionResult
+            if extractor is any OCREnhancedExtractor {
+                extraction = try OCREnhancedDocument.extract(
+                    fileId: fileId,
+                    fileURL: fileURL
+                )
+            } else {
+                extraction = try extractor.extract(fileURL: fileURL)
+            }
+
+            result = bridge.extractContentExternal(
+                fileId: fileId,
+                status: "indexed",
+                bodyText: extraction.bodyText,
+                extractorName: extractorName,
+                detectedMime: extraction.detectedMime,
+                encoding: extraction.encoding,
+                error: nil
+            )
+            HollowLogger.ocr.info(
+                "Swift extracted \(fileURL.lastPathComponent, privacy: .public) via \(extractorName, privacy: .public) (\(extraction.bodyText.count) chars)"
+            )
+        } catch {
+            HollowLogger.ocr.error(
+                "Swift extractor \(extractorName, privacy: .public) failed on \(fileURL.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+            result = bridge.extractContentExternal(
+                fileId: fileId,
+                status: "extract_failed",
+                bodyText: nil,
+                extractorName: extractorName,
+                detectedMime: record.mimeType ?? "application/octet-stream",
+                encoding: nil,
+                error: error.localizedDescription
+            )
+        }
+
+        deliverResult(result)
+    }
+
+    private func deliverResult(_ result: ExtractContentResult?) {
+        // Same capture-locals pattern as MetadataIntakeOperation: main()
+        // is synchronous and the operation gets released as soon as it
+        // returns, so the Task must own its state directly rather than
+        // chase a weak self.
         let capturedFileId = fileId
         let capturedService = service
         Task { @MainActor in
@@ -121,6 +214,12 @@ final class IngestionService {
     }
 
     func start() {
+        // Idempotent — calling start() on an already-running service is a
+        // no-op, not a double-subscribe. Defense in depth for callers that
+        // might not track launch state (e.g. SwiftUI `.onAppear` firing on
+        // every window show).
+        guard !isWatching else { return }
+
         watcher.start()
         isWatching = true
         HollowLogger.ingestion.info("Ingestion service started (workers: \(Self.workerConcurrency))")
