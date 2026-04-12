@@ -311,6 +311,26 @@ private struct ModelsSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Runtime") {
+                let onnxReady = (try? HollowBridge.modelsDirectory())
+                    .map { FileManager.default.fileExists(atPath: $0.appendingPathComponent("libonnxruntime.dylib").path) } ?? false
+
+                LabeledContent("ONNX Runtime") {
+                    if onnxReady {
+                        Label("Installed", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.caption)
+                    } else {
+                        Label("Not installed", systemImage: "xmark.circle")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                    }
+                }
+                Text("Downloaded automatically with the first model.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             if let status = embeddingStatus {
                 Section("Embedding Status") {
                     LabeledContent("Files indexed") {

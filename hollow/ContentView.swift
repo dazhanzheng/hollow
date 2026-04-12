@@ -51,6 +51,9 @@ struct ContentView: View {
                 .labelStyle(.titleAndIcon)
             }
 
+            // Embedding status
+            EmbeddingStatusBadge()
+
             // Search button
             Button {
                 openWindow(id: "search")
@@ -105,5 +108,80 @@ struct ContentView: View {
         }
         .padding(24)
         .frame(minWidth: 380, minHeight: 340)
+    }
+}
+
+// MARK: - Embedding Status Badge
+
+/// Self-contained badge that polls embedding readiness and stats.
+/// Shows one of three states: not installed, ready (with counts), or processing.
+private struct EmbeddingStatusBadge: View {
+    @State private var modelReady = false
+    @State private var onnxReady = false
+    @State private var status: EmbeddingStatus?
+    @State private var refreshTimer: Timer?
+
+    var body: some View {
+        Group {
+            if !modelReady {
+                // Model not downloaded
+                HStack(spacing: 6) {
+                    Image(systemName: "brain")
+                        .foregroundStyle(.secondary)
+                    Text("Semantic search: model not downloaded")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if !onnxReady {
+                // Model downloaded but ONNX Runtime missing
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                    Text("Semantic search: runtime missing")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            } else if let status {
+                // Everything ready — show stats
+                HStack(spacing: 6) {
+                    Image(systemName: "brain")
+                        .foregroundStyle(.green)
+                    if status.pendingEmbedding > 0 {
+                        Text("\(status.totalEmbedded)/\(status.totalIndexed) embedded")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text("\(status.totalEmbedded) embedded")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.green)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(.quaternary, in: Capsule())
+        .task {
+            refresh()
+        }
+        .onAppear {
+            // Poll every 5s to catch model downloads and embedding progress
+            refreshTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+                Task { @MainActor in refresh() }
+            }
+        }
+        .onDisappear {
+            refreshTimer?.invalidate()
+        }
+    }
+
+    private func refresh() {
+        modelReady = HollowBridge.shared.isEmbeddingReady()
+        if let modelsDir = try? HollowBridge.modelsDirectory() {
+            onnxReady = FileManager.default.fileExists(
+                atPath: modelsDir.appendingPathComponent("libonnxruntime.dylib").path
+            )
+        }
+        status = HollowBridge.shared.getEmbeddingStatus()
     }
 }
