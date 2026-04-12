@@ -33,13 +33,16 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
             // Step 0: Ensure ONNX Runtime dylib is available (~30 MB)
             try await ensureOnnxRuntime(modelsBase: modelsBase)
 
-            // Download model file (~585 MB)
-            let modelURL = URL(string: "https://huggingface.co/onnx-community/Qwen3-Embedding-0.6B-ONNX/resolve/main/onnx/model_int8.onnx")!
+            // Download model file (~624 MB)
+            // Using electroglyph's embedding-specific export (no KV-cache inputs).
+            // The onnx-community version is for Transformers.js and requires
+            // past_key_values which we don't need for embedding.
+            let modelURL = URL(string: "https://huggingface.co/electroglyph/Qwen3-Embedding-0.6B-onnx-uint8/resolve/main/dynamic_uint8.onnx")!
             let modelDest = modelDir.appendingPathComponent("model.onnx")
             try await downloadFile(from: modelURL, to: modelDest, progressWeight: 0.90)
 
-            // Download tokenizer (~7 MB, fast)
-            let tokenizerURL = URL(string: "https://huggingface.co/onnx-community/Qwen3-Embedding-0.6B-ONNX/resolve/main/tokenizer.json")!
+            // Download tokenizer (~7 MB)
+            let tokenizerURL = URL(string: "https://huggingface.co/electroglyph/Qwen3-Embedding-0.6B-onnx-uint8/resolve/main/tokenizer.json")!
             let tokenizerDest = modelDir.appendingPathComponent("tokenizer.json")
             try await downloadFile(from: tokenizerURL, to: tokenizerDest, progressWeight: 0.05)
 
