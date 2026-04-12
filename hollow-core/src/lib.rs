@@ -860,9 +860,14 @@ impl HollowCore {
             return Ok(false);
         }
 
-        // Ensure model is loaded
-        let mut model_lock = self.embedding_model.lock()
-            .map_err(|e| HollowError::InvalidInput(format!("Model lock: {}", e)))?;
+        // Ensure model is loaded. Recover from poisoned lock (prior panic in ort).
+        let mut model_lock = match self.embedding_model.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                info!("Recovering poisoned embedding model lock");
+                poisoned.into_inner()
+            }
+        };
         if model_lock.is_none() {
             let model_path = self.model_manager.model_path(&ModelVariant::Qwen3Small);
             let tokenizer_path = self.model_manager.tokenizer_path(&ModelVariant::Qwen3Small);
@@ -872,13 +877,25 @@ impl HollowCore {
                 ));
             }
             info!("Loading embedding model...");
-            let model = EmbeddingModel::load(&model_path, &tokenizer_path)?;
-            *model_lock = Some(model);
-            info!("Embedding model loaded");
+            // catch_unwind: ort panics if dylib is missing — don't poison the mutex
+            let load_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                EmbeddingModel::load(&model_path, &tokenizer_path)
+            }));
+            match load_result {
+                Ok(Ok(model)) => {
+                    *model_lock = Some(model);
+                    info!("Embedding model loaded");
+                }
+                Ok(Err(e)) => return Err(e),
+                Err(_) => {
+                    return Err(HollowError::InvalidInput(
+                        "ONNX Runtime failed to load. Ensure the model is downloaded.".to_string()
+                    ));
+                }
+            }
         }
 
         // Run inference
-        // NOTE: EmbeddingModel.embed() takes &mut self because ort::Session::run needs &mut
         let truncated = if text.len() > 8000 { &text[..8000] } else { &text };
         let model = model_lock.as_mut().unwrap();
         let embedding = model.embed(truncated)?;
@@ -932,15 +949,19 @@ impl HollowCore {
             return Ok(Vec::new());
         }
 
-        // Try to embed the query for vector search
-        let query_embedding: Option<Vec<f32>> = {
-            let mut model_lock = self.embedding_model.lock()
-                .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
-            if let Some(ref mut model) = *model_lock {
-                model.embed(&query).ok()
-            } else {
-                None
+        // Try to embed the query for vector search.
+        // If the model lock is poisoned (prior panic) or no model loaded, skip
+        // embedding and fall back to FTS-only — search must never fail just
+        // because embedding isn't available.
+        let query_embedding: Option<Vec<f32>> = match self.embedding_model.lock() {
+            Ok(mut model_lock) => {
+                if let Some(ref mut model) = *model_lock {
+                    model.embed(&query).ok()
+                } else {
+                    None
+                }
             }
+            Err(_) => None,
         };
 
         let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
