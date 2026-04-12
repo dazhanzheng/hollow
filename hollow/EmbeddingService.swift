@@ -60,8 +60,11 @@ final class EmbeddingService {
                 self?.totalPending = total
             }
 
+            var succeeded = 0
             for (index, fileId) in ids.enumerated() {
-                _ = HollowBridge.shared.embedFile(fileId: fileId)
+                if HollowBridge.shared.embedFile(fileId: fileId) {
+                    succeeded += 1
+                }
                 Task { @MainActor in
                     self?.processedCount = index + 1
                 }
@@ -69,7 +72,11 @@ final class EmbeddingService {
 
             Task { @MainActor in
                 self?.isProcessing = false
-                HollowLogger.embedding.info("Embedding complete: \(total) files")
+                if succeeded > 0 {
+                    HollowLogger.embedding.info("Embedded \(succeeded)/\(total) files")
+                } else if total > 0 {
+                    HollowLogger.embedding.warning("Embedding failed for all \(total) files (model not downloaded?)")
+                }
             }
         }
     }
