@@ -79,9 +79,9 @@ private struct SearchResultRow: View {
                 Text(result.fileName)
                     .font(.body.weight(.medium))
                 Spacer()
-                Text(String(format: "%.3f", result.rank))
+                Text("\(Int(result.rank * 100))%")
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(result.rank > 0.8 ? Color.green : result.rank > 0.5 ? Color.orange : Color.gray)
             }
             Text(result.currentPath)
                 .font(.caption)

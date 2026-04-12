@@ -984,15 +984,18 @@ impl HollowCore {
             limit,
         )?;
 
+        // Normalize scores to 0..1 (percentage of best match)
+        let max_score = hybrid_results.iter().map(|r| r.score).fold(0.0_f32, f32::max);
         let mut results = Vec::with_capacity(hybrid_results.len());
         for hr in hybrid_results {
             if let Some(record) = FileStore::get_file(&db.conn, &hr.file_id)? {
+                let normalized = if max_score > 0.0 { hr.score / max_score } else { 0.0 };
                 results.push(SearchResult {
                     file_id: hr.file_id,
                     file_name: record.file_name,
                     current_path: record.current_path,
                     snippet: hr.snippet.unwrap_or_default(),
-                    rank: hr.score as f64,
+                    rank: normalized as f64,
                 });
             }
         }
