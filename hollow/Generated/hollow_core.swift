@@ -1851,16 +1851,30 @@ public struct SearchResult: Equatable, Hashable {
     public var fileName: String
     public var currentPath: String
     public var snippet: String
-    public var rank: Double
+    /**
+     * Cosine similarity (0..1) if embedding matched, -1 if FTS-only.
+     */
+    public var similarity: Double
+    /**
+     * Which sources matched: "fts", "embedding", or both.
+     */
+    public var sources: [String]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(fileId: String, fileName: String, currentPath: String, snippet: String, rank: Double) {
+    public init(fileId: String, fileName: String, currentPath: String, snippet: String, 
+        /**
+         * Cosine similarity (0..1) if embedding matched, -1 if FTS-only.
+         */similarity: Double, 
+        /**
+         * Which sources matched: "fts", "embedding", or both.
+         */sources: [String]) {
         self.fileId = fileId
         self.fileName = fileName
         self.currentPath = currentPath
         self.snippet = snippet
-        self.rank = rank
+        self.similarity = similarity
+        self.sources = sources
     }
 
     
@@ -1883,7 +1897,8 @@ public struct FfiConverterTypeSearchResult: FfiConverterRustBuffer {
                 fileName: FfiConverterString.read(from: &buf), 
                 currentPath: FfiConverterString.read(from: &buf), 
                 snippet: FfiConverterString.read(from: &buf), 
-                rank: FfiConverterDouble.read(from: &buf)
+                similarity: FfiConverterDouble.read(from: &buf), 
+                sources: FfiConverterSequenceString.read(from: &buf)
         )
     }
 
@@ -1892,7 +1907,8 @@ public struct FfiConverterTypeSearchResult: FfiConverterRustBuffer {
         FfiConverterString.write(value.fileName, into: &buf)
         FfiConverterString.write(value.currentPath, into: &buf)
         FfiConverterString.write(value.snippet, into: &buf)
-        FfiConverterDouble.write(value.rank, into: &buf)
+        FfiConverterDouble.write(value.similarity, into: &buf)
+        FfiConverterSequenceString.write(value.sources, into: &buf)
     }
 }
 

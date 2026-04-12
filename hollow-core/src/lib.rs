@@ -87,7 +87,10 @@ pub struct SearchResult {
     pub file_name: String,
     pub current_path: String,
     pub snippet: String,
-    pub rank: f64,
+    /// Cosine similarity (0..1) if embedding matched, -1 if FTS-only.
+    pub similarity: f64,
+    /// Which sources matched: "fts", "embedding", or both.
+    pub sources: Vec<String>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -940,7 +943,8 @@ impl HollowCore {
                     file_name: record.file_name,
                     current_path: record.current_path,
                     snippet: fts.snippet,
-                    rank: fts.rank,
+                    similarity: -1.0, // FTS-only, no cosine similarity
+                    sources: vec!["fts".to_string()],
                 });
             }
         }
@@ -984,18 +988,16 @@ impl HollowCore {
             limit,
         )?;
 
-        // Normalize scores to 0..1 (percentage of best match)
-        let max_score = hybrid_results.iter().map(|r| r.score).fold(0.0_f32, f32::max);
         let mut results = Vec::with_capacity(hybrid_results.len());
         for hr in hybrid_results {
             if let Some(record) = FileStore::get_file(&db.conn, &hr.file_id)? {
-                let normalized = if max_score > 0.0 { hr.score / max_score } else { 0.0 };
                 results.push(SearchResult {
                     file_id: hr.file_id,
                     file_name: record.file_name,
                     current_path: record.current_path,
                     snippet: hr.snippet.unwrap_or_default(),
-                    rank: normalized as f64,
+                    similarity: hr.cosine_similarity as f64,
+                    sources: hr.sources,
                 });
             }
         }

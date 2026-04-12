@@ -79,9 +79,14 @@ private struct SearchResultRow: View {
                 Text(result.fileName)
                     .font(.body.weight(.medium))
                 Spacer()
-                Text("\(Int(result.rank * 100))%")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(result.rank > 0.8 ? Color.green : result.rank > 0.5 ? Color.orange : Color.gray)
+                // Source tags
+                ForEach(result.sources, id: \.self) { source in
+                    SourceTag(source: source)
+                }
+                // Cosine similarity (only if embedding matched)
+                if result.similarity >= 0 {
+                    SimilarityBadge(value: result.similarity)
+                }
             }
             Text(result.currentPath)
                 .font(.caption)
@@ -105,5 +110,31 @@ private struct SearchResultRow: View {
     private func snippetPlainText(_ snippet: String) -> String {
         snippet.replacingOccurrences(of: "<b>", with: "")
                .replacingOccurrences(of: "</b>", with: "")
+    }
+}
+
+private struct SourceTag: View {
+    let source: String
+
+    var body: some View {
+        let isKeyword = source == "fts"
+        Text(isKeyword ? "keyword" : "semantic")
+            .font(.caption2.weight(.medium))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(isKeyword ? Color.blue.opacity(0.15) : Color.purple.opacity(0.15),
+                        in: Capsule())
+            .foregroundStyle(isKeyword ? Color.blue : Color.purple)
+    }
+}
+
+private struct SimilarityBadge: View {
+    let value: Double
+
+    var body: some View {
+        let color: Color = value > 0.8 ? .green : value > 0.6 ? .orange : .gray
+        Text("\(Int(value * 100))%")
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(color)
     }
 }
