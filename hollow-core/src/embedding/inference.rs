@@ -1,4 +1,5 @@
 use crate::HollowError;
+
 use ort::session::builder::GraphOptimizationLevel;
 use ort::session::Session;
 use ort::value::Tensor;
@@ -72,14 +73,21 @@ impl EmbeddingModel {
                 .map_err(|e| HollowError::InvalidInput(format!("ONNX run: {}", e)))?
         };
 
+        // Log all output info on first call for debugging
         let output = &outputs[0];
 
-        // Try f32 first, fall back to u8 (uint8 quantized models output u8).
+        // Dequantization constants for electroglyph/Qwen3-Embedding-0.6B-onnx-uint8.
+        // Range: [-0.3009805381298065, 0.3952634334564209]
+        const QUANT_MIN: f32 = -0.3009805;
+        const QUANT_RANGE: f32 = 0.6962440; // max - min
+
         let float_data: Vec<f32> = if let Ok((shape, data)) = output.try_extract_tensor::<f32>() {
             extract_embedding(&shape, data)?
         } else if let Ok((shape, data)) = output.try_extract_tensor::<u8>() {
-            // uint8 symmetric quantization: 128 = zero point, range maps to -1..+1
-            let as_float: Vec<f32> = data.iter().map(|&v| (v as f32 - 128.0) / 128.0).collect();
+            // Asymmetric linear dequantization: float = (u8 / 255) * range + min
+            let as_float: Vec<f32> = data.iter()
+                .map(|&v| (v as f32 / 255.0) * QUANT_RANGE + QUANT_MIN)
+                .collect();
             extract_embedding(&shape, &as_float)?
         } else {
             return Err(HollowError::InvalidInput(
@@ -87,9 +95,9 @@ impl EmbeddingModel {
             ));
         };
 
-        let embedding = float_data;
-
-        Ok(l2_normalize(&embedding))
+        // The uint8 model README says "without normalization" — skip L2 norm.
+        // For f32 models, normalizing is still correct.
+        Ok(float_data)
     }
 
     pub fn dimensions(&self) -> usize {
