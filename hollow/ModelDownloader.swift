@@ -94,21 +94,19 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
         try process.run()
         process.waitUntilExit()
 
-        // Find the versioned dylib (the real file, not the symlink).
-        // e.g. libonnxruntime.1.22.0.dylib
-        let enumerator = FileManager.default.enumerator(at: extractDir, includingPropertiesForKeys: [.isSymbolicLinkKey])
-        while let fileURL = enumerator?.nextObject() as? URL {
-            // Skip symlinks — we want the actual binary
-            let isSymlink = (try? fileURL.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) ?? false
-            guard !isSymlink else { continue }
-            if fileURL.lastPathComponent.contains("libonnxruntime") && fileURL.pathExtension == "dylib" {
-                try FileManager.default.copyItem(at: fileURL, to: dylibDest)
-                HollowLogger.embedding.info("ONNX Runtime dylib installed (\(fileURL.lastPathComponent))")
-                return
-            }
+        // Known path: onnxruntime-osx-arm64-1.22.0/lib/libonnxruntime.1.22.0.dylib
+        // This is the real dylib. The archive also contains a symlink and a
+        // dSYM directory with a same-named debug companion — we must use the
+        // exact path to avoid picking up the wrong file.
+        let dylibSource = extractDir
+            .appendingPathComponent("onnxruntime-osx-arm64-1.22.0/lib/libonnxruntime.1.22.0.dylib")
+        guard FileManager.default.fileExists(atPath: dylibSource.path) else {
+            throw URLError(.cannotCreateFile, userInfo: [
+                NSLocalizedDescriptionKey: "libonnxruntime.1.22.0.dylib not found in archive"
+            ])
         }
-
-        throw URLError(.cannotCreateFile, userInfo: [NSLocalizedDescriptionKey: "Could not find libonnxruntime.dylib in downloaded archive"])
+        try FileManager.default.copyItem(at: dylibSource, to: dylibDest)
+        HollowLogger.embedding.info("ONNX Runtime dylib installed")
     }
 
     func cancel() {
