@@ -130,10 +130,12 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
         let config = URLSessionConfiguration.default
         let progressBase = await MainActor.run { self.progress }
 
-        // Use delegate for progress reporting
+        // Use delegate for progress reporting.
+        // DispatchQueue.main.async instead of Task{@MainActor} to ensure
+        // each update is dispatched individually (Task can be coalesced).
         let delegate = DownloadDelegate { [weak self] fractionCompleted in
             let totalProgress = progressBase + fractionCompleted * progressWeight
-            Task { @MainActor in
+            DispatchQueue.main.async {
                 self?.progress = totalProgress
             }
         }
@@ -158,8 +160,10 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
 }
 
 /// Delegate that reports download progress via a callback.
+/// Throttles to ~4 updates/sec to avoid flooding the main thread.
 private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, Sendable {
     let onProgress: @Sendable (Double) -> Void
+    private let lastUpdate = OSAllocatedUnfairLock(initialState: CFAbsoluteTimeGetCurrent())
 
     init(onProgress: @escaping @Sendable (Double) -> Void) {
         self.onProgress = onProgress
@@ -173,7 +177,17 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, Send
         totalBytesExpectedToWrite: Int64
     ) {
         guard totalBytesExpectedToWrite > 0 else { return }
+        let now = CFAbsoluteTimeGetCurrent()
+        let shouldUpdate = lastUpdate.withLock { last -> Bool in
+            if now - last >= 0.25 {
+                last = now
+                return true
+            }
+            return false
+        }
+        // Always fire at 100%
         let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        guard shouldUpdate || fraction >= 1.0 else { return }
         onProgress(fraction)
     }
 
