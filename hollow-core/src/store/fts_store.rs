@@ -35,14 +35,8 @@ impl FtsStore {
     /// a LIKE scan on the FTS5 content.
     pub fn search(conn: &Connection, query: &str, limit: u32) -> Result<Vec<FtsSearchResult>, HollowError> {
         let trimmed = query.trim();
-        if trimmed.is_empty() {
+        if trimmed.is_empty() || trimmed.chars().count() < 3 {
             return Ok(Vec::new());
-        }
-
-        // Trigram tokenizer requires >= 3 chars per token.
-        // For short queries, use LIKE fallback on the FTS5 content table.
-        if trimmed.chars().count() < 3 {
-            return Self::search_like(conn, trimmed, limit);
         }
 
         let mut stmt = conn.prepare(
@@ -66,41 +60,7 @@ impl FtsStore {
         Ok(results)
     }
 
-    /// Fallback for short queries (< 3 chars): scan the FTS5 content with LIKE.
-    fn search_like(conn: &Connection, query: &str, limit: u32) -> Result<Vec<FtsSearchResult>, HollowError> {
-        let pattern = format!("%{}%", query);
-        let mut stmt = conn.prepare(
-            "SELECT file_id, body_text FROM file_content_fts WHERE body_text LIKE ?1 LIMIT ?2"
-        )?;
-        let rows = stmt.query_map(rusqlite::params![pattern, limit], |row| {
-            let file_id: String = row.get(0)?;
-            let body: String = row.get(1)?;
-            // Build a simple snippet around the match
-            let snippet = Self::extract_snippet(&body, query);
-            Ok(FtsSearchResult { file_id, snippet, rank: 0.0 })
-        })?;
-        let mut results = Vec::new();
-        for row in rows {
-            results.push(row?);
-        }
-        Ok(results)
-    }
 
-    /// Extract a short snippet around the first occurrence of `needle` in `haystack`.
-    fn extract_snippet(haystack: &str, needle: &str) -> String {
-        if let Some(pos) = haystack.to_lowercase().find(&needle.to_lowercase()) {
-            let start = haystack[..pos].char_indices()
-                .rev().nth(30).map(|(i, _)| i).unwrap_or(0);
-            let end_byte = pos + needle.len();
-            let end = haystack[end_byte..].char_indices()
-                .nth(30).map(|(i, _)| end_byte + i).unwrap_or(haystack.len());
-            let prefix = if start > 0 { "…" } else { "" };
-            let suffix = if end < haystack.len() { "…" } else { "" };
-            format!("{}{}{}", prefix, &haystack[start..end], suffix)
-        } else {
-            haystack.chars().take(80).collect()
-        }
-    }
 }
 
 #[cfg(test)]
