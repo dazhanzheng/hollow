@@ -1,8 +1,10 @@
 // hollow-core/src/lib.rs
 mod db;
+mod embedding;
 mod error;
 mod content;
 mod logging;
+mod search;
 mod store;
 
 pub use db::models::FileRecord;
@@ -12,7 +14,8 @@ pub use logging::{LogEntry, LogLevel};
 use content::pipeline::ContentPipeline;
 use content::registry::default_registry;
 use db::Database;
-use store::{FileContentStore, FileStore};
+use embedding::{ModelManager, ModelVariant, EmbeddingModel};
+use store::{FileContentStore, FileStore, FtsStore, EmbeddingStore};
 
 use sha2::{Sha256, Digest};
 use std::fs;
@@ -78,9 +81,37 @@ pub struct ExtractedImage {
     pub mime: String,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SearchResult {
+    pub file_id: String,
+    pub file_name: String,
+    pub current_path: String,
+    pub snippet: String,
+    pub rank: f64,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct EmbeddingModelInfo {
+    pub name: String,
+    pub display_name: String,
+    pub description: String,
+    pub download_size_mb: u64,
+    pub ram_usage_mb: u64,
+    pub is_downloaded: bool,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct EmbeddingStatus {
+    pub total_indexed: u32,
+    pub total_embedded: u32,
+    pub pending_embedding: u32,
+}
+
 #[derive(uniffi::Object)]
 pub struct HollowCore {
     db: Mutex<Database>,
+    model_manager: ModelManager,
+    embedding_model: Mutex<Option<EmbeddingModel>>,
 }
 
 #[uniffi::export]
@@ -89,8 +120,19 @@ impl HollowCore {
     pub fn new(db_path: String) -> Result<Self, HollowError> {
         logging::init_logging();
         let db = Database::open(&db_path)?;
+
+        // Models directory: sibling to the database file
+        let db_parent = Path::new(&db_path)
+            .parent()
+            .unwrap_or(Path::new("."));
+        let models_dir = db_parent.join("models");
+
         info!("HollowCore initialized, db: {}", db_path);
-        Ok(HollowCore { db: Mutex::new(db) })
+        Ok(HollowCore {
+            db: Mutex::new(db),
+            model_manager: ModelManager::new(models_dir),
+            embedding_model: Mutex::new(None),
+        })
     }
 
     /// Fast intake: only reads fs metadata, no file content read.
@@ -398,6 +440,12 @@ impl HollowCore {
                     &extracted_at,
                 )?;
                 FileStore::update_status(&db.conn, &file_id, "indexed")?;
+                // Populate FTS5 index with the extracted text
+                if let Some(ref text) = outcome.body_text {
+                    if !text.is_empty() {
+                        FtsStore::index(&db.conn, &file_id, text)?;
+                    }
+                }
                 info!(
                     "Extracted content: {} ({} bytes, {})",
                     file_id,
@@ -569,6 +617,13 @@ impl HollowCore {
 
         let extracted_at = iso8601_now();
 
+        // Keep a copy of the body text for FTS5 indexing (compression consumes it)
+        let body_text_for_fts = if status == "indexed" {
+            body_text.clone()
+        } else {
+            None
+        };
+
         // Step 2: If indexed, compress the caller-supplied body_text outside
         // the mutex (matches Rust pipeline behavior — zstd is CPU heavy).
         let (body_text_bytes, compressed_body): (u64, Option<Vec<u8>>) = if status == "indexed" {
@@ -618,6 +673,11 @@ impl HollowCore {
                     &extracted_at,
                 )?;
                 FileStore::update_status(&db.conn, &file_id, "indexed")?;
+                if let Some(ref text) = body_text_for_fts {
+                    if !text.is_empty() {
+                        FtsStore::index(&db.conn, &file_id, text)?;
+                    }
+                }
                 info!(
                     "External extraction indexed: {} ({} bytes, {})",
                     file_id, body_text_bytes, extractor_name
@@ -740,6 +800,171 @@ impl HollowCore {
         } else {
             Ok(None)
         }
+    }
+
+    /// List available embedding models and their download status.
+    pub fn list_embedding_models(&self) -> Vec<EmbeddingModelInfo> {
+        ModelManager::available_models()
+            .into_iter()
+            .map(|m| EmbeddingModelInfo {
+                name: m.name,
+                display_name: m.display_name,
+                description: m.description,
+                download_size_mb: m.download_size_mb,
+                ram_usage_mb: m.ram_usage_mb,
+                is_downloaded: self.model_manager.is_downloaded(&m.variant),
+            })
+            .collect()
+    }
+
+    /// Check if the default embedding model is ready.
+    pub fn is_embedding_ready(&self) -> bool {
+        self.model_manager.is_downloaded(&ModelVariant::Qwen3Small)
+    }
+
+    /// Get embedding statistics.
+    pub fn get_embedding_status(&self) -> Result<EmbeddingStatus, HollowError> {
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        let total_indexed: u32 = db.conn.query_row(
+            "SELECT COUNT(*) FROM files WHERE status = 'indexed'",
+            [],
+            |r| r.get(0),
+        )?;
+        let total_embedded: u32 = db.conn.query_row(
+            "SELECT COUNT(*) FROM embeddings",
+            [],
+            |r| r.get(0),
+        )?;
+        Ok(EmbeddingStatus {
+            total_indexed,
+            total_embedded,
+            pending_embedding: total_indexed.saturating_sub(total_embedded),
+        })
+    }
+
+    /// Get file IDs that need embedding.
+    pub fn get_pending_embedding_ids(&self) -> Result<Vec<String>, HollowError> {
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        EmbeddingStore::get_pending_ids(&db.conn)
+    }
+
+    /// Generate and store an embedding for a file.
+    /// Loads the model lazily on first call.
+    pub fn embed_file(&self, file_id: String) -> Result<bool, HollowError> {
+        // Get body text
+        let body_text = self.get_body_text(file_id.clone())?;
+        let Some(text) = body_text else {
+            return Ok(false);
+        };
+        if text.is_empty() {
+            return Ok(false);
+        }
+
+        // Ensure model is loaded
+        let mut model_lock = self.embedding_model.lock()
+            .map_err(|e| HollowError::InvalidInput(format!("Model lock: {}", e)))?;
+        if model_lock.is_none() {
+            let model_path = self.model_manager.model_path(&ModelVariant::Qwen3Small);
+            let tokenizer_path = self.model_manager.tokenizer_path(&ModelVariant::Qwen3Small);
+            if !model_path.exists() {
+                return Err(HollowError::InvalidInput(
+                    "Embedding model not downloaded. Download it from Settings → Models.".to_string()
+                ));
+            }
+            info!("Loading embedding model...");
+            let model = EmbeddingModel::load(&model_path, &tokenizer_path)?;
+            *model_lock = Some(model);
+            info!("Embedding model loaded");
+        }
+
+        // Run inference
+        // NOTE: EmbeddingModel.embed() takes &mut self because ort::Session::run needs &mut
+        let truncated = if text.len() > 8000 { &text[..8000] } else { &text };
+        let model = model_lock.as_mut().unwrap();
+        let embedding = model.embed(truncated)?;
+
+        // Release model lock before acquiring db lock
+        drop(model_lock);
+
+        // Store embedding
+        let embedded_at = iso8601_now();
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        EmbeddingStore::upsert(
+            &db.conn,
+            &file_id,
+            &embedding,
+            "qwen3-embedding-0.6b-int8",
+            &embedded_at,
+        )?;
+
+        info!("Embedded file: {} ({} dims)", file_id, embedding.len());
+        Ok(true)
+    }
+
+    /// Full-text search across all indexed file content.
+    /// Returns results ranked by FTS5 relevance, enriched with file metadata.
+    pub fn search(&self, query: String, limit: u32) -> Result<Vec<SearchResult>, HollowError> {
+        if query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        let fts_results = FtsStore::search(&db.conn, &query, limit)?;
+        let mut results = Vec::with_capacity(fts_results.len());
+        for fts in fts_results {
+            if let Some(record) = FileStore::get_file(&db.conn, &fts.file_id)? {
+                results.push(SearchResult {
+                    file_id: fts.file_id,
+                    file_name: record.file_name,
+                    current_path: record.current_path,
+                    snippet: fts.snippet,
+                    rank: fts.rank,
+                });
+            }
+        }
+        Ok(results)
+    }
+
+    /// Hybrid search: combines full-text (FTS5) and semantic (embedding) search.
+    /// If embedding model is loaded, the query text is also embedded for vector search.
+    /// Falls back to FTS5-only if no model is available.
+    pub fn hybrid_search(&self, query: String, limit: u32) -> Result<Vec<SearchResult>, HollowError> {
+        if query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Try to embed the query for vector search
+        let query_embedding: Option<Vec<f32>> = {
+            let mut model_lock = self.embedding_model.lock()
+                .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
+            if let Some(ref mut model) = *model_lock {
+                model.embed(&query).ok()
+            } else {
+                None
+            }
+        };
+
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+
+        let hybrid_results = search::HybridSearcher::search(
+            &db.conn,
+            &query,
+            query_embedding.as_deref(),
+            limit,
+        )?;
+
+        let mut results = Vec::with_capacity(hybrid_results.len());
+        for hr in hybrid_results {
+            if let Some(record) = FileStore::get_file(&db.conn, &hr.file_id)? {
+                results.push(SearchResult {
+                    file_id: hr.file_id,
+                    file_name: record.file_name,
+                    current_path: record.current_path,
+                    snippet: hr.snippet.unwrap_or_default(),
+                    rank: hr.score as f64,
+                });
+            }
+        }
+        Ok(results)
     }
 }
 
@@ -1238,6 +1463,42 @@ mod tests {
 
         let fetched = core.get_file(record.id).unwrap().unwrap();
         assert_eq!(fetched.status, "unsupported");
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_extract_content_populates_fts5() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_fts_int", "note.txt", b"searchable content here");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        core.extract_content(record.id.clone()).unwrap();
+
+        // Verify FTS5 was populated by searching
+        let db = core.db.lock().unwrap();
+        let results = store::FtsStore::search(&db.conn, "searchable content", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].file_id, record.id);
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_search_ffi() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_search_ffi", "report.txt", b"quarterly revenue report for Q4 2025");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+        core.extract_content(record.id.clone()).unwrap();
+
+        let results = core.search("revenue report".to_string(), 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].file_name, "report.txt");
+        assert!(!results[0].snippet.is_empty());
+
+        // Empty query returns empty
+        let empty = core.search("".to_string(), 10).unwrap();
+        assert!(empty.is_empty());
 
         cleanup(&[&path, &path.parent().unwrap()]);
     }

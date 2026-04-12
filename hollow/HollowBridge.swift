@@ -277,4 +277,50 @@ final class HollowBridge: @unchecked Sendable {
         guard let core else { return 0 }
         return (try? core.reclaimExtracting()) ?? 0
     }
+
+    nonisolated func listEmbeddingModels() -> [EmbeddingModelInfo] {
+        guard let core else { return [] }
+        return core.listEmbeddingModels()
+    }
+
+    nonisolated func isEmbeddingReady() -> Bool {
+        guard let core else { return false }
+        return core.isEmbeddingReady()
+    }
+
+    nonisolated func getEmbeddingStatus() -> EmbeddingStatus? {
+        guard let core else { return nil }
+        return try? core.getEmbeddingStatus()
+    }
+
+    nonisolated func getPendingEmbeddingIds() -> [String] {
+        guard let core else { return [] }
+        return (try? core.getPendingEmbeddingIds()) ?? []
+    }
+
+    nonisolated func embedFile(fileId: String) -> Bool {
+        guard let core else { return false }
+        return (try? core.embedFile(fileId: fileId)) ?? false
+    }
+
+    nonisolated func hybridSearch(query: String, limit: UInt32 = 50) -> [SearchResult] {
+        guard let core else { return [] }
+        do {
+            return try core.hybridSearch(query: query, limit: limit)
+        } catch {
+            HollowLogger.search.error("Hybrid search failed: \(error)")
+            return []
+        }
+    }
+
+    /// Full-text search across all indexed content.
+    nonisolated func search(query: String, limit: UInt32 = 50) -> [SearchResult] {
+        guard let core else { return [] }
+        do {
+            return try core.search(query: query, limit: limit)
+        } catch {
+            HollowLogger.search.error("Search failed: \(error)")
+            return []
+        }
+    }
 }

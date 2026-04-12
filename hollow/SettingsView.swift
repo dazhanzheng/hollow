@@ -14,6 +14,11 @@ struct SettingsView: View {
                     Label("Plugins", systemImage: "puzzlepiece.extension")
                 }
 
+            ModelsSettingsView()
+                .tabItem {
+                    Label("Models", systemImage: "cpu")
+                }
+
             AdvancedSettingsView()
                 .tabItem {
                     Label("Advanced", systemImage: "slider.horizontal.3")
@@ -24,7 +29,7 @@ struct SettingsView: View {
                     Label("Developer", systemImage: "hammer")
                 }
         }
-        .frame(width: 520, height: 420)
+        .frame(width: 560, height: 460)
     }
 }
 
@@ -279,6 +284,102 @@ private struct PluginToggleRow: View {
         .task {
             let key = "plugin.enabled.\(info.name)"
             isEnabled = UserDefaults.standard.object(forKey: key) as? Bool ?? true
+        }
+    }
+}
+
+// MARK: - Models
+
+private struct ModelsSettingsView: View {
+    @State private var models: [EmbeddingModelInfo] = []
+    @State private var embeddingStatus: EmbeddingStatus?
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(models, id: \.name) { model in
+                    ModelRow(model: model)
+                }
+            } header: {
+                Text("Embedding Models")
+            } footer: {
+                Text("Embedding models enable semantic search — finding files by meaning, not just keywords. Models run locally on your Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let status = embeddingStatus {
+                Section("Embedding Status") {
+                    LabeledContent("Files indexed") {
+                        Text("\(status.totalIndexed)")
+                            .monospacedDigit()
+                    }
+                    LabeledContent("Files embedded") {
+                        Text("\(status.totalEmbedded)")
+                            .monospacedDigit()
+                    }
+                    if status.pendingEmbedding > 0 {
+                        LabeledContent("Pending") {
+                            Text("\(status.pendingEmbedding)")
+                                .monospacedDigit()
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .task {
+            models = HollowBridge.shared.listEmbeddingModels()
+            embeddingStatus = HollowBridge.shared.getEmbeddingStatus()
+        }
+    }
+}
+
+private struct ModelRow: View {
+    let model: EmbeddingModelInfo
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.displayName)
+                    .font(.body.weight(.medium))
+                Text(model.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Text("Download: \(model.downloadSizeMb) MB")
+                    Text("RAM: ~\(model.ramUsageMb) MB")
+                }
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
+                // RAM warning for large models
+                if model.ramUsageMb >= 3000 && !model.isDownloaded {
+                    let ram = ProcessInfo.processInfo.physicalMemory / (1024 * 1024 * 1024)
+                    if ram < 32 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("Your Mac has \(ram) GB RAM. This model may slow down other apps.")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+            }
+
+            Spacer()
+
+            if model.isDownloaded {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                Button("Download") {
+                    // Model download will be connected when download infrastructure is ready
+                }
+                .buttonStyle(.bordered)
+            }
         }
     }
 }

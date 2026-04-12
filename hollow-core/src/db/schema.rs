@@ -62,6 +62,20 @@ CREATE TABLE operations_log (
 );
 
 CREATE INDEX idx_operations_log_file_time ON operations_log(file_id, performed_at);
+
+CREATE VIRTUAL TABLE file_content_fts USING fts5(
+    file_id UNINDEXED,
+    body_text,
+    tokenize = 'trigram'
+);
+
+CREATE TABLE embeddings (
+    file_id       TEXT PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    embedding     BLOB NOT NULL,
+    dimensions    INTEGER NOT NULL,
+    model_name    TEXT NOT NULL,
+    embedded_at   TEXT NOT NULL
+);
 ";
 
 pub fn migrate(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
@@ -155,5 +169,35 @@ mod tests {
         ] {
             assert!(cols.contains(&expected.to_string()), "missing column: {}", expected);
         }
+    }
+
+    #[test]
+    fn test_fts5_table_exists_after_migration() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        migrate(&conn).unwrap();
+        let count: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='file_content_fts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_embeddings_table_exists_after_migration() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        migrate(&conn).unwrap();
+        let count: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='embeddings'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
     }
 }

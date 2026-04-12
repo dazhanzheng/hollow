@@ -1,0 +1,50 @@
+import Foundation
+import Observation
+import os
+
+@MainActor @Observable
+final class EmbeddingService {
+    var isProcessing = false
+    var processedCount = 0
+    var totalPending = 0
+
+    private let embeddingQueue: OperationQueue = {
+        let q = OperationQueue()
+        q.name = "com.syncpulse.hollow.embedding"
+        q.maxConcurrentOperationCount = 1
+        q.qualityOfService = .utility
+        return q
+    }()
+
+    func processAllPending() {
+        guard !isProcessing else { return }
+        guard HollowBridge.shared.isEmbeddingReady() else {
+            HollowLogger.embedding.info("Embedding model not downloaded, skipping")
+            return
+        }
+
+        isProcessing = true
+        processedCount = 0
+
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let ids = HollowBridge.shared.getPendingEmbeddingIds()
+            let total = ids.count
+
+            Task { @MainActor in
+                self?.totalPending = total
+            }
+
+            for (index, fileId) in ids.enumerated() {
+                _ = HollowBridge.shared.embedFile(fileId: fileId)
+                Task { @MainActor in
+                    self?.processedCount = index + 1
+                }
+            }
+
+            Task { @MainActor in
+                self?.isProcessing = false
+                HollowLogger.embedding.info("Embedding complete: \(total) files")
+            }
+        }
+    }
+}

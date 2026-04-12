@@ -27,6 +27,9 @@ html2text = { version = "0.16", default-features = false }
 zip = { version = "8", default-features = false, features = ["deflate"] }
 quick-xml = "0.39"
 rtf-parser = "0.4"
+ort = { version = "=2.0.0-rc.11", default-features = false, features = ["load-dynamic", "ndarray"] }
+ndarray = "0.17"
+tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"] }
 
 [build-dependencies]
 uniffi = { version = "0.31", features = ["build"] }

@@ -9,4 +9,6 @@ nonisolated enum HollowLogger {
     nonisolated static let app         = Logger(subsystem: "com.syncpulse.hollow", category: "App")
     nonisolated static let rustCore    = Logger(subsystem: "com.syncpulse.hollow", category: "RustCore")
     nonisolated static let ocr         = Logger(subsystem: "com.syncpulse.hollow", category: "OCR")
+    nonisolated static let search      = Logger(subsystem: "com.syncpulse.hollow", category: "Search")
+    nonisolated static let embedding   = Logger(subsystem: "com.syncpulse.hollow", category: "Embedding")
 }

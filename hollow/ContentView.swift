@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(IngestionService.self) private var ingestion
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 20) {
@@ -49,6 +50,14 @@ struct ContentView: View {
                 .font(.caption.monospacedDigit())
                 .labelStyle(.titleAndIcon)
             }
+
+            // Search button
+            Button {
+                openWindow(id: "search")
+            } label: {
+                Label("Search Files", systemImage: "magnifyingglass")
+            }
+            .buttonStyle(.borderedProminent)
 
             // Recent files
             if !ingestion.recentFiles.isEmpty {
