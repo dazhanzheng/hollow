@@ -1,11 +1,43 @@
 import SwiftUI
+import ServiceManagement
 
 struct SettingsView: View {
-    @AppStorage("enableFullHash") private var enableFullHash = false
-    @AppStorage("debugMode") private var debugMode = false
+    var body: some View {
+        TabView {
+            GeneralSettingsView()
+                .tabItem {
+                    Label("General", systemImage: "gear")
+                }
+
+            PluginsSettingsView()
+                .tabItem {
+                    Label("Plugins", systemImage: "puzzlepiece.extension")
+                }
+
+            AdvancedSettingsView()
+                .tabItem {
+                    Label("Advanced", systemImage: "slider.horizontal.3")
+                }
+
+            DeveloperSettingsView()
+                .tabItem {
+                    Label("Developer", systemImage: "hammer")
+                }
+        }
+        .frame(width: 520, height: 420)
+    }
+}
+
+// MARK: - General
+
+private struct GeneralSettingsView: View {
     @AppStorage("appLanguage") private var appLanguage = ""
-    @State private var isComputingFullHash = false
-    @State private var fullHashProgress: String?
+    @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
+    /// Mirrors the real `SMAppService.mainApp.status`. We don't persist this
+    /// in UserDefaults — it's derived from system state and refreshed via
+    /// `.task` whenever the pane appears.
+    @State private var launchAtLogin: Bool = LaunchAtLogin.isEnabled
+    @State private var launchAtLoginNeedsApproval: Bool = false
 
     private let inboxPath = FileWatcher.inboxURL.path
     private let dbPath: String = {
@@ -19,7 +51,53 @@ struct SettingsView: View {
     }()
 
     var body: some View {
+        generalForm
+            .task {
+                launchAtLogin = LaunchAtLogin.isEnabled
+                launchAtLoginNeedsApproval = (LaunchAtLogin.status == .requiresApproval)
+            }
+    }
+
+    private var generalForm: some View {
         Form {
+            Section("Startup") {
+                Toggle("Launch Hollow at login", isOn: Binding(
+                    get: { launchAtLogin },
+                    set: { newValue in
+                        LaunchAtLogin.setEnabled(newValue)
+                        // Re-read system state — the toggle reflects real state,
+                        // not just what we asked for (user may need to approve
+                        // in System Settings, or the request may fail outright).
+                        launchAtLogin = LaunchAtLogin.isEnabled
+                        launchAtLoginNeedsApproval = (LaunchAtLogin.status == .requiresApproval)
+                    }
+                ))
+
+                if launchAtLoginNeedsApproval {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Approval required — open System Settings → Login Items.")
+                            .font(.caption)
+                        Button("Open") {
+                            LaunchAtLogin.openSystemSettingsLoginItems()
+                        }
+                        .buttonStyle(.link)
+                    }
+                } else {
+                    Text("When enabled, Hollow starts automatically when you log in and runs quietly in the menu bar.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Menu Bar") {
+                Toggle("Show Hollow in menu bar", isOn: $showMenuBarIcon)
+                Text("Keeps a status icon in the menu bar with quick access to stats, inbox, and controls.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Language") {
                 Picker("Language", selection: $appLanguage) {
                     Text("System Default").tag("")
@@ -38,6 +116,8 @@ struct SettingsView: View {
                         Text(inboxPath)
                             .textSelection(.enabled)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                         Button {
                             NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: inboxPath)
                         } label: {
@@ -52,6 +132,8 @@ struct SettingsView: View {
                         Text(dbPath)
                             .textSelection(.enabled)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                         Button {
                             NSWorkspace.shared.activateFileViewerSelecting(
                                 [URL(fileURLWithPath: dbPath)]
@@ -63,6 +145,162 @@ struct SettingsView: View {
                         .help("Reveal in Finder")
                     }
                 }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Plugins
+
+/// Unified display model for the Settings Plugins tab. Abstracts over the
+/// Rust-side `ExtractorPluginInfo` (FFI record) and Swift-side
+/// `SwiftExtractor` instances so the UI can render both in one list.
+private struct PluginDisplayInfo: Identifiable {
+    let id: String
+    let name: String
+    let displayName: String
+    let description: String
+    let extensions: [String]
+    /// True if the backing implementation lives in Swift (Apple Vision,
+    /// PDFKit, etc.). Toggling a Swift plugin only touches UserDefaults —
+    /// Rust plugins additionally push the change down into the Rust
+    /// pipeline's disabled-set.
+    let isSwift: Bool
+}
+
+private struct PluginsSettingsView: View {
+    @State private var plugins: [PluginDisplayInfo] = []
+
+    var body: some View {
+        Form {
+            Section {
+                if plugins.isEmpty {
+                    Text("No parser plugins available.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(plugins) { info in
+                        PluginToggleRow(info: info)
+                    }
+                }
+            } header: {
+                Text("Parser Plugins")
+            } footer: {
+                Text("Disabled plugins are skipped during content extraction. Affected files will be marked as unsupported until you re-enable the plugin and re-extract them.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .task {
+            plugins = Self.loadAllPlugins()
+        }
+    }
+
+    /// Merge Rust and Swift plugin lists into one flat array. Rust plugins
+    /// come first (historical order), Swift plugins (Apple Vision) after.
+    private static func loadAllPlugins() -> [PluginDisplayInfo] {
+        let rust = HollowBridge.shared.listExtractors().map { info in
+            PluginDisplayInfo(
+                id: info.name,
+                name: info.name,
+                displayName: info.displayName,
+                description: info.description,
+                extensions: info.extensions,
+                isSwift: false
+            )
+        }
+        let swift = SwiftExtractorRegistry.shared.all.map { extractor in
+            PluginDisplayInfo(
+                id: extractor.name,
+                name: extractor.name,
+                displayName: extractor.displayName,
+                description: extractor.description,
+                extensions: extractor.supportedExtensions,
+                isSwift: true
+            )
+        }
+        return rust + swift
+    }
+}
+
+private struct PluginToggleRow: View {
+    let info: PluginDisplayInfo
+    @State private var isEnabled: Bool = true
+
+    var body: some View {
+        Toggle(isOn: Binding(
+            get: { isEnabled },
+            set: { newValue in
+                isEnabled = newValue
+                // Persist to the shared UserDefaults key format. For Rust
+                // plugins we also push to the Rust pipeline immediately
+                // so new extractions respect the change; Swift plugins
+                // re-read UserDefaults on every lookup so no push needed.
+                UserDefaults.standard.set(
+                    newValue,
+                    forKey: "plugin.enabled.\(info.name)"
+                )
+                if !info.isSwift {
+                    HollowBridge.shared.setExtractorEnabled(
+                        name: info.name,
+                        enabled: newValue
+                    )
+                }
+            }
+        )) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(info.displayName)
+                        .font(.body)
+                    if info.isSwift {
+                        Text("LOCAL")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(.tint, in: Capsule())
+                    }
+                }
+                Text(info.description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !info.extensions.isEmpty {
+                    Text(info.extensions.prefix(12).map { ".\($0)" }.joined(separator: " ")
+                         + (info.extensions.count > 12 ? " …" : ""))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .monospaced()
+                }
+            }
+        }
+        .task {
+            let key = "plugin.enabled.\(info.name)"
+            isEnabled = UserDefaults.standard.object(forKey: key) as? Bool ?? true
+        }
+    }
+}
+
+// MARK: - Advanced
+
+private struct AdvancedSettingsView: View {
+    @AppStorage("enableFullHash") private var enableFullHash = false
+    @State private var isComputingFullHash = false
+    @State private var fullHashProgress: String?
+
+    var body: some View {
+        Form {
+            Section("Performance") {
+                LabeledContent("Extraction workers") {
+                    Text("\(IngestionService.workerConcurrency)")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                Text("Number of parallel workers used for metadata intake and content extraction. Derived from CPU core count.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Hashing") {
@@ -93,25 +331,8 @@ struct SettingsView: View {
                     }
                 }
             }
-
-            Section("Performance") {
-                LabeledContent("Extraction workers") {
-                    Text("\(IngestionService.workerConcurrency)")
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-            }
-
-            Section("Developer") {
-                Toggle("Debug Mode", isOn: $debugMode)
-                Text("Shows Debug menu in the menu bar with database browser and log viewer.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
         .formStyle(.grouped)
-        .frame(width: 480)
-        .padding()
     }
 
     private func runFullHashForAll() {
@@ -136,5 +357,23 @@ struct SettingsView: View {
                 isComputingFullHash = false
             }
         }
+    }
+}
+
+// MARK: - Developer
+
+private struct DeveloperSettingsView: View {
+    @AppStorage("debugMode") private var debugMode = false
+
+    var body: some View {
+        Form {
+            Section("Developer") {
+                Toggle("Debug Mode", isOn: $debugMode)
+                Text("Shows Debug menu in the menu bar with database browser and log viewer.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
     }
 }

@@ -5,9 +5,17 @@ import os
 struct hollowApp: App {
     @State private var ingestionService = IngestionService()
     @State private var showSidebarPrompt = false
+    @State private var showLaunchAtLoginPrompt = false
+    /// Guard against `.onAppear` re-running the launch sequence every time
+    /// the main window is closed and reopened (e.g. via the menu bar item).
+    /// `.onAppear` fires on every show, but we only want the ingestion
+    /// service / log relay / prompts to run exactly once per process.
+    @State private var didStartup = false
     @AppStorage("debugMode") private var debugMode = false
     @AppStorage("appLanguage") private var appLanguage = ""
     @AppStorage("sidebarPromptDismissed") private var sidebarPromptDismissed = false
+    @AppStorage("launchAtLoginPromptDismissed") private var launchAtLoginPromptDismissed = false
+    @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
     @Environment(\.openWindow) private var openWindow
 
     init() {
@@ -25,19 +33,35 @@ struct hollowApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        // Single-instance main window. Using `Window` (not `WindowGroup`) so
+        // that `openWindow(id: "main")` reuses the existing instance instead
+        // of creating a duplicate every time the user hits the menu bar item.
+        Window("Hollow", id: "main") {
             ContentView()
                 .environment(ingestionService)
                 .environment(\.locale, activeLocale)
                 .onAppear {
+                    // `.onAppear` fires every time the window becomes
+                    // visible, including when the user closes the main
+                    // window and reopens it from the menu bar. Guard so
+                    // the process-level launch sequence runs exactly once.
+                    guard !didStartup else { return }
+                    didStartup = true
+
                     ingestionService.start()
                     RustLogRelay.shared.start()
                     HollowLogger.app.info("hollow app launched")
                     promptSidebarIfNeeded()
+                    promptLaunchAtLoginIfNeeded()
                 }
                 .sheet(isPresented: $showSidebarPrompt) {
                     SidebarPromptView(isPresented: $showSidebarPrompt) {
                         sidebarPromptDismissed = true
+                    }
+                }
+                .sheet(isPresented: $showLaunchAtLoginPrompt) {
+                    LaunchAtLoginPromptView(isPresented: $showLaunchAtLoginPrompt) {
+                        launchAtLoginPromptDismissed = true
                     }
                 }
         }
@@ -46,12 +70,18 @@ struct hollowApp: App {
             if debugMode {
                 CommandMenu("Debug") {
                     Button("Database Browser") {
-                        openWindow(id: "database-browser")
+                        surfaceWindow(
+                            open: { openWindow(id: "database-browser") },
+                            matches: isWindowWithSceneId("database-browser")
+                        )
                     }
                     .keyboardShortcut("D", modifiers: [.command, .shift])
 
                     Button("Log Viewer") {
-                        openWindow(id: "log-viewer")
+                        surfaceWindow(
+                            open: { openWindow(id: "log-viewer") },
+                            matches: isWindowWithSceneId("log-viewer")
+                        )
                     }
                     .keyboardShortcut("L", modifiers: [.command, .shift])
 
@@ -79,6 +109,17 @@ struct hollowApp: App {
             LogViewerView()
                 .environment(\.locale, activeLocale)
         }
+
+        MenuBarExtra(
+            "Hollow",
+            systemImage: ingestionService.isWatching ? "archivebox.fill" : "archivebox",
+            isInserted: $showMenuBarIcon
+        ) {
+            MenuBarView()
+                .environment(ingestionService)
+                .environment(\.locale, activeLocale)
+        }
+        .menuBarExtraStyle(.window)
     }
 
     private func confirmAndDeleteDatabase() {
@@ -110,6 +151,30 @@ struct hollowApp: App {
         }
 
         NSApplication.shared.terminate(nil)
+    }
+
+    /// Show the launch-at-login prompt if the user hasn't dismissed it yet
+    /// AND the app isn't already set up to launch at login. If it's already
+    /// enabled (or the user previously opted out), do nothing silently.
+    private func promptLaunchAtLoginIfNeeded() {
+        guard !launchAtLoginPromptDismissed else { return }
+        guard !LaunchAtLogin.isEnabled else {
+            // Already registered — no need to bother the user, and mark as
+            // handled so we don't re-ask on the next launch.
+            launchAtLoginPromptDismissed = true
+            return
+        }
+
+        // Delay slightly so the main window has a chance to draw first.
+        // Also avoids racing the sidebar prompt — we want one sheet at a time.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+            // Re-check on the timer in case state changed in the meantime.
+            guard !launchAtLoginPromptDismissed, !LaunchAtLogin.isEnabled else { return }
+            // Don't stack on top of the sidebar prompt if it's still up.
+            guard !showSidebarPrompt else { return }
+            showLaunchAtLoginPrompt = true
+            HollowLogger.app.info("Showing launch-at-login prompt")
+        }
     }
 
     private func promptSidebarIfNeeded() {
@@ -181,5 +246,45 @@ private struct SidebarPromptView: View {
             Text(text)
                 .font(.callout)
         }
+    }
+}
+
+// MARK: - Launch-at-login Prompt
+
+private struct LaunchAtLoginPromptView: View {
+    @Binding var isPresented: Bool
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "power.circle.fill")
+                .font(.system(size: 40))
+                .foregroundStyle(.tint)
+
+            Text("Launch Hollow at Login?")
+                .font(.title3.weight(.semibold))
+
+            Text("Hollow works best when it's always running in the background — new files in your Inbox get picked up immediately, and the menu bar icon is always available.\n\nYou can change this anytime in Settings → General.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 12) {
+                Button("Not Now") {
+                    onDismiss()
+                    isPresented = false
+                }
+
+                Button("Enable") {
+                    _ = LaunchAtLogin.enable()
+                    onDismiss()
+                    isPresented = false
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(28)
+        .frame(width: 420)
     }
 }
