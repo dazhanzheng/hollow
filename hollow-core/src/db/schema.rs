@@ -78,12 +78,33 @@ CREATE TABLE embeddings (
 );
 ";
 
+const MIGRATION_V2: &str = "
+CREATE VIRTUAL TABLE IF NOT EXISTS file_content_fts USING fts5(
+    file_id UNINDEXED,
+    body_text,
+    tokenize = 'trigram'
+);
+
+CREATE TABLE IF NOT EXISTS embeddings (
+    file_id       TEXT PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+    embedding     BLOB NOT NULL,
+    dimensions    INTEGER NOT NULL,
+    model_name    TEXT NOT NULL,
+    embedded_at   TEXT NOT NULL
+);
+";
+
 pub fn migrate(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     let current_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
 
     if current_version < 1 {
         conn.execute_batch(MIGRATION_V1)?;
-        conn.pragma_update(None, "user_version", 1)?;
+        conn.pragma_update(None, "user_version", 2)?;
+    }
+
+    if current_version >= 1 && current_version < 2 {
+        conn.execute_batch(MIGRATION_V2)?;
+        conn.pragma_update(None, "user_version", 2)?;
     }
 
     Ok(())
@@ -99,7 +120,7 @@ mod tests {
         conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
         migrate(&conn).unwrap();
         let version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
     }
 
     #[test]
@@ -109,7 +130,42 @@ mod tests {
         migrate(&conn).unwrap();
         migrate(&conn).unwrap();
         let version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
+    }
+
+    #[test]
+    fn test_migrate_v1_to_v2() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        // Simulate a V1 database (no FTS5, no embeddings)
+        // Remove the FTS5 and embeddings parts from V1 and apply manually
+        let v1_without_batch3 = MIGRATION_V1
+            .split("CREATE VIRTUAL TABLE")
+            .next()
+            .unwrap();
+        conn.execute_batch(v1_without_batch3).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        // Now migrate — should apply V2
+        migrate(&conn).unwrap();
+        let version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+        assert_eq!(version, 2);
+        // FTS5 and embeddings should exist now
+        let fts_count: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='file_content_fts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(fts_count, 1);
+        let emb_count: u32 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='embeddings'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(emb_count, 1);
     }
 
     #[test]
