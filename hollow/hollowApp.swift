@@ -4,6 +4,7 @@ import os
 @main
 struct hollowApp: App {
     @State private var ingestionService = IngestionService()
+    @State private var embeddingService = EmbeddingService()
     @State private var showSidebarPrompt = false
     @State private var showLaunchAtLoginPrompt = false
     /// Guard against `.onAppear` re-running the launch sequence every time
@@ -51,6 +52,7 @@ struct hollowApp: App {
                     didStartup = true
 
                     ingestionService.start()
+                    embeddingService.startListening()
                     RustLogRelay.shared.start()
                     HollowLogger.app.info("hollow app launched")
                     promptSidebarIfNeeded()
