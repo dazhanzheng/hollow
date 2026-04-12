@@ -36,6 +36,48 @@ pub struct ExtractContentResult {
     pub error: Option<String>,
 }
 
+/// Descriptor for a built-in extractor plugin, returned to the settings UI.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ExtractorPluginInfo {
+    pub name: String,
+    pub display_name: String,
+    pub description: String,
+    pub extensions: Vec<String>,
+}
+
+/// Text template + image byte payloads for a zip-based document format
+/// (docx / pptx / odt / ods / odp / epub). Used by the Swift side to run
+/// Apple Vision OCR on embedded images and substitute the results back
+/// into the text template at the placeholder positions.
+///
+/// Returning `None` from `extract_with_images` means "this file type has
+/// no image-aware extractor" — the Swift caller should fall back to the
+/// regular text-only pipeline.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ExtractWithImagesResult {
+    /// Body text with `{{HOLLOW_IMG_N}}` markers inserted at image
+    /// positions.
+    pub text_template: String,
+    /// Image byte payloads, one per marker, in placeholder order.
+    pub images: Vec<ExtractedImage>,
+    /// Canonical MIME type for this document.
+    pub detected_mime: String,
+    /// Extractor name to record on `file_content.extractor_name`.
+    /// Matches the name used by the corresponding `SwiftExtractor`.
+    pub extractor_name: String,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ExtractedImage {
+    /// The bare marker string (`"HOLLOW_IMG_0"`, no wrapping braces) —
+    /// Swift builds the full `{{HOLLOW_IMG_0}}` form when substituting.
+    pub marker: String,
+    /// Raw bytes of the embedded image as stored in the archive.
+    pub bytes: Vec<u8>,
+    /// Best-guess IANA MIME type for the image, e.g. "image/png".
+    pub mime: String,
+}
+
 #[derive(uniffi::Object)]
 pub struct HollowCore {
     db: Mutex<Database>,
@@ -178,6 +220,34 @@ impl HollowCore {
         FileStore::update_hash(&db.conn, &file_id, &hash)?;
 
         Ok(hash)
+    }
+
+    /// Read back the extracted body text for a file. Decompresses the
+    /// zstd-compressed blob stored in `file_content.body_text_compressed`.
+    /// Returns `Ok(None)` if no content row exists for this file (e.g.
+    /// still pending or unsupported).
+    pub fn get_body_text(&self, file_id: String) -> Result<Option<String>, HollowError> {
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        let compressed: Option<Vec<u8>> = db
+            .conn
+            .query_row(
+                "SELECT body_text_compressed FROM file_content WHERE file_id = ?1",
+                rusqlite::params![file_id],
+                |row| row.get(0),
+            )
+            .ok()
+            .flatten();
+        let Some(bytes) = compressed else {
+            return Ok(None);
+        };
+        if bytes.is_empty() {
+            return Ok(None);
+        }
+        let decoded = zstd::decode_all(&bytes[..])
+            .map_err(|e| HollowError::Database(format!("zstd decode: {}", e)))?;
+        let text = String::from_utf8(decoded)
+            .map_err(|e| HollowError::Database(format!("utf8 decode: {}", e)))?;
+        Ok(Some(text))
     }
 
     /// Returns IDs of all files with status="pending" (not yet fully processed).
@@ -370,6 +440,222 @@ impl HollowCore {
         })
     }
 
+    /// Extract a zip-based document's text layer + embedded image bytes,
+    /// for handoff to Swift-side Apple Vision OCR. The returned template
+    /// has `{{HOLLOW_IMG_N}}` placeholders where images appear, and the
+    /// `images` array holds the raw bytes of each referenced image in
+    /// placeholder order.
+    ///
+    /// Returns `Ok(None)` for file types without an image-aware
+    /// extractor (anything other than .docx/.pptx/.odt/.ods/.odp/.epub) —
+    /// the caller should fall back to the regular text-only extraction
+    /// path.
+    ///
+    /// Does **not** touch the file's status in the database — the Swift
+    /// caller owns the state transition and commits via
+    /// `extract_content_external` once it has OCR'd and merged the
+    /// final text.
+    pub fn extract_with_images(
+        &self,
+        file_id: String,
+    ) -> Result<Option<ExtractWithImagesResult>, HollowError> {
+        // Look up the record's current path. If missing or vanished,
+        // return None — Swift will fall back to extract_content which
+        // handles those cases.
+        let current_path = {
+            let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+            let record = FileStore::get_file(&db.conn, &file_id)?
+                .ok_or_else(|| HollowError::FileNotFound(file_id.clone()))?;
+            if record.status == "missing" {
+                return Ok(None);
+            }
+            record.current_path
+        };
+
+        let path = Path::new(&current_path);
+        if !path.exists() {
+            return Ok(None);
+        }
+
+        let result = match content::image_docs::extract(path) {
+            Ok(Some(r)) => r,
+            Ok(None) => return Ok(None),
+            Err(e) => {
+                return Err(HollowError::InvalidInput(format!(
+                    "image_docs extraction failed: {}",
+                    e
+                )));
+            }
+        };
+
+        let images = result
+            .images
+            .into_iter()
+            .map(|img| ExtractedImage {
+                marker: img.marker,
+                bytes: img.bytes,
+                mime: img.mime,
+            })
+            .collect();
+
+        Ok(Some(ExtractWithImagesResult {
+            text_template: result.text_template,
+            images,
+            detected_mime: result.detected_mime,
+            extractor_name: result.extractor_name,
+        }))
+    }
+
+    /// Store an extraction outcome produced outside the Rust ContentPipeline
+    /// (e.g. by the Swift-side Apple Vision OCR pipeline for images and PDFs).
+    ///
+    /// Takes the same state-machine path as `extract_content` — mark extracting,
+    /// guard against file-vanished races, update detected_mime, write compressed
+    /// body into `file_content`, flip `files.status` — but bypasses the pipeline
+    /// run entirely, using caller-supplied values instead.
+    ///
+    /// `status` must be one of `"indexed"`, `"extract_failed"`, `"unsupported"`.
+    /// For `"indexed"` the `body_text` argument is used as the content;
+    /// for `"extract_failed"` the `error` argument is stored on file_content.
+    pub fn extract_content_external(
+        &self,
+        file_id: String,
+        status: String,
+        body_text: Option<String>,
+        extractor_name: String,
+        detected_mime: String,
+        encoding: Option<String>,
+        error: Option<String>,
+    ) -> Result<ExtractContentResult, HollowError> {
+        // Step 1: Same missing/extracting handshake as extract_content. If the
+        // file is already missing, bail out. Otherwise mark it extracting so
+        // that reclaim_extracting() can recover from crashes during OCR.
+        let current_path = {
+            let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+            let record = FileStore::get_file(&db.conn, &file_id)?
+                .ok_or_else(|| HollowError::FileNotFound(file_id.clone()))?;
+            if record.status == "missing" {
+                info!("Skip external extraction: {} is already missing", file_id);
+                return Ok(ExtractContentResult {
+                    file_id,
+                    status: "missing".to_string(),
+                    extractor_name: None,
+                    detected_mime: String::new(),
+                    extension_mismatch: false,
+                    body_text_bytes: 0,
+                    error: Some("file was removed before extraction started".to_string()),
+                });
+            }
+            FileStore::update_status(&db.conn, &file_id, "extracting")?;
+            record.current_path
+        };
+
+        // Step 1.5: Existence re-check, same as the Rust-pipeline path.
+        let path = Path::new(&current_path);
+        if !path.exists() {
+            let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+            FileStore::mark_missing_by_path(&db.conn, &current_path)?;
+            info!("File vanished before external extraction: {}", current_path);
+            return Ok(ExtractContentResult {
+                file_id,
+                status: "missing".to_string(),
+                extractor_name: None,
+                detected_mime: "application/octet-stream".to_string(),
+                extension_mismatch: false,
+                body_text_bytes: 0,
+                error: Some("file was removed before extraction could start".to_string()),
+            });
+        }
+
+        let extracted_at = iso8601_now();
+
+        // Step 2: If indexed, compress the caller-supplied body_text outside
+        // the mutex (matches Rust pipeline behavior — zstd is CPU heavy).
+        let (body_text_bytes, compressed_body): (u64, Option<Vec<u8>>) = if status == "indexed" {
+            let body = body_text.unwrap_or_default();
+            let bytes = body.len() as u64;
+            let compressed = zstd::encode_all(body.as_bytes(), 3)
+                .map_err(|e| HollowError::Database(format!("zstd encode: {}", e)))?;
+            (bytes, Some(compressed))
+        } else {
+            (0, None)
+        };
+
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+
+        // Step 3: Re-check missing state after reacquiring the lock.
+        let current_status = FileStore::get_file(&db.conn, &file_id)?
+            .ok_or_else(|| HollowError::FileNotFound(file_id.clone()))?
+            .status;
+        if current_status == "missing" {
+            info!("Skip overwrite: {} was marked missing during external extraction", file_id);
+            return Ok(ExtractContentResult {
+                file_id,
+                status: "missing".to_string(),
+                extractor_name: Some(extractor_name),
+                detected_mime,
+                extension_mismatch: false,
+                body_text_bytes: 0,
+                error: Some("file was removed during extraction".to_string()),
+            });
+        }
+
+        // External extractors don't do their own magic-bytes detection, so we
+        // take the caller's word on detected_mime and never flag mismatch here.
+        FileStore::update_detected_mime(&db.conn, &file_id, &detected_mime, false)?;
+
+        match status.as_str() {
+            "indexed" => {
+                let compressed = compressed_body
+                    .expect("compressed_body is Some when status is indexed");
+                FileContentStore::upsert(
+                    &db.conn,
+                    &file_id,
+                    &compressed,
+                    body_text_bytes as i64,
+                    encoding.as_deref(),
+                    &extractor_name,
+                    &extracted_at,
+                )?;
+                FileStore::update_status(&db.conn, &file_id, "indexed")?;
+                info!(
+                    "External extraction indexed: {} ({} bytes, {})",
+                    file_id, body_text_bytes, extractor_name
+                );
+            }
+            "unsupported" => {
+                FileStore::update_status(&db.conn, &file_id, "unsupported")?;
+                info!("External extraction unsupported: {} ({})", file_id, extractor_name);
+            }
+            _ => {
+                // Treat any other value as extract_failed.
+                FileContentStore::upsert_error(
+                    &db.conn,
+                    &file_id,
+                    error.as_deref().unwrap_or("external extractor failed"),
+                    Some(&extractor_name),
+                    &extracted_at,
+                )?;
+                FileStore::update_status(&db.conn, &file_id, "extract_failed")?;
+                info!(
+                    "External extraction failed: {} ({})",
+                    file_id,
+                    error.as_deref().unwrap_or("?")
+                );
+            }
+        }
+
+        Ok(ExtractContentResult {
+            file_id,
+            status,
+            extractor_name: Some(extractor_name),
+            detected_mime,
+            extension_mismatch: false,
+            body_text_bytes,
+            error,
+        })
+    }
+
     /// Recompute quick_hash and compare with stored value.
     pub fn has_changed(&self, file_id: String) -> Result<bool, HollowError> {
         let (current_path, old_quick_hash) = {
@@ -421,6 +707,27 @@ impl HollowCore {
             info!("Reclaimed {} files stuck in extracting state", count);
         }
         Ok(count as u32)
+    }
+
+    /// List all built-in extractor plugins. Static; does not hit the database.
+    pub fn list_extractors(&self) -> Vec<ExtractorPluginInfo> {
+        content::registry::plugin_descriptors()
+            .iter()
+            .map(|d| ExtractorPluginInfo {
+                name: d.name.to_string(),
+                display_name: d.display_name.to_string(),
+                description: d.description.to_string(),
+                extensions: d.extensions.iter().map(|e| e.to_string()).collect(),
+            })
+            .collect()
+    }
+
+    /// Enable or disable a specific extractor plugin by name. Disabled plugins
+    /// are bypassed by the pipeline and matching files are reported as
+    /// `unsupported` instead of being extracted.
+    pub fn set_extractor_enabled(&self, name: String, enabled: bool) {
+        content::registry::set_extractor_enabled(&name, enabled);
+        info!("Extractor {} {}", name, if enabled { "enabled" } else { "disabled" });
     }
 
     /// Look up a file's UUID by its current path.
@@ -640,6 +947,116 @@ mod tests {
         let core = HollowCore::new(":memory:".to_string()).unwrap();
         let result = core.ingest_file("/nonexistent/path/file.txt".to_string());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_content_external_indexed() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_extract_ext", "photo.png", b"fake png bytes");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        let result = core
+            .extract_content_external(
+                record.id.clone(),
+                "indexed".to_string(),
+                Some("recognized text from OCR".to_string()),
+                "AppleVisionImage".to_string(),
+                "image/png".to_string(),
+                Some("UTF-8".to_string()),
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(result.status, "indexed");
+        assert_eq!(result.extractor_name.as_deref(), Some("AppleVisionImage"));
+        assert_eq!(result.detected_mime, "image/png");
+        assert_eq!(result.body_text_bytes, "recognized text from OCR".len() as u64);
+
+        // Verify the record got bumped to indexed in files table.
+        let fetched = core.get_file(record.id.clone()).unwrap().unwrap();
+        assert_eq!(fetched.status, "indexed");
+        assert_eq!(fetched.detected_mime.as_deref(), Some("image/png"));
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_extract_content_external_failed() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_extract_ext_fail", "bad.pdf", b"not really a pdf");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        let result = core
+            .extract_content_external(
+                record.id.clone(),
+                "extract_failed".to_string(),
+                None,
+                "AppleVisionPdf".to_string(),
+                "application/pdf".to_string(),
+                None,
+                Some("no pages found".to_string()),
+            )
+            .unwrap();
+
+        assert_eq!(result.status, "extract_failed");
+        let fetched = core.get_file(record.id.clone()).unwrap().unwrap();
+        assert_eq!(fetched.status, "extract_failed");
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_extract_with_images_returns_none_for_plain_text() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_ewi_txt", "note.txt", b"just some text");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        // .txt has no image-aware extractor — should get None back.
+        let result = core.extract_with_images(record.id.clone()).unwrap();
+        assert!(result.is_none());
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_extract_with_images_returns_none_for_missing() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_ewi_missing", "book.epub", b"fake");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        core.mark_missing(path.to_string_lossy().to_string()).unwrap();
+
+        let result = core.extract_with_images(record.id.clone()).unwrap();
+        assert!(result.is_none());
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_extract_content_external_preserves_missing_status() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_extract_ext_missing", "photo.jpg", b"fake");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        core.mark_missing(path.to_string_lossy().to_string()).unwrap();
+
+        let result = core
+            .extract_content_external(
+                record.id.clone(),
+                "indexed".to_string(),
+                Some("should be ignored".to_string()),
+                "AppleVisionImage".to_string(),
+                "image/jpeg".to_string(),
+                Some("UTF-8".to_string()),
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(result.status, "missing");
+        let fetched = core.get_file(record.id.clone()).unwrap().unwrap();
+        assert_eq!(fetched.status, "missing");
+
+        cleanup(&[&path, &path.parent().unwrap()]);
     }
 
     #[test]

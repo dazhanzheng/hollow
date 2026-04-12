@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::content::extractor::{ExtractionError, ExtractionResult};
 
-pub const DEFAULT_MAX_FILE_SIZE: u64 = 50 * 1024 * 1024; // 50 MB
+pub const DEFAULT_MAX_FILE_SIZE: u64 = 100 * 1024 * 1024; // 100 MB
 
 /// Read an entire file, detect encoding, and return UTF-8 text.
 pub fn read_text_file(path: &Path, max_size: u64) -> Result<ExtractionResult, ExtractionError> {

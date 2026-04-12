@@ -49,19 +49,38 @@ impl ContentPipeline {
             _ => false,
         };
 
-        // Step 3: Find extractor — first by MIME, then by extension fallback.
+        // Step 3: Find extractor — first by MIME, then by extension fallback,
+        // then by exact basename (for no-extension files like Dockerfile).
+        //
         // When the detected MIME is the generic text/plain heuristic fallback
-        // (no magic-bytes match, so extension_hint is None), prefer a more
-        // specific extractor found by extension over the generic PlainText one.
+        // (no magic-bytes match, so extension_hint is None), we prefer the
+        // more specific routes (basename → extension) over the generic
+        // PlainText MIME route, since the MIME route is just a catch-all.
         let mime_extractor = self.registry.find_by_mime(&detected.mime);
         let ext_extractor = original_extension
             .and_then(|ext| self.registry.find_by_extension(ext));
+        let basename_extractor = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| self.registry.find_by_basename(n));
 
         let extractor = if detected.mime == "text/plain" && detected.extension_hint.is_none() {
-            // Heuristic text fallback — prefer extension-specific if available
-            ext_extractor.or(mime_extractor)
+            // Heuristic text fallback — prefer specific routes first.
+            basename_extractor
+                .or(ext_extractor)
+                .or(mime_extractor)
+        } else if extension_mismatch {
+            // Magic bytes say one format, filename says another. Trust the
+            // magic bytes — the extension is already proven to be lying, so
+            // falling back to extension-based routing would read binary
+            // content as text and index garbage. If there's no extractor for
+            // the real format, report unsupported and let the mismatch flag
+            // surface it to the user.
+            mime_extractor
         } else {
-            mime_extractor.or(ext_extractor)
+            mime_extractor
+                .or(ext_extractor)
+                .or(basename_extractor)
         };
 
         let extractor = match extractor {
@@ -80,6 +99,19 @@ impl ContentPipeline {
         };
 
         let extractor_name = extractor.name().to_string();
+
+        // Respect user-disabled extractors from the settings UI.
+        if crate::content::registry::is_extractor_disabled(&extractor_name) {
+            return ExtractionOutcome {
+                status: "unsupported".to_string(),
+                extractor_name: Some(extractor_name),
+                body_text: None,
+                encoding: None,
+                detected_mime: detected.mime,
+                extension_mismatch,
+                error: Some("extractor disabled in settings".to_string()),
+            };
+        }
 
         // Step 4: Run extraction, catching any panic
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -171,5 +203,50 @@ mod tests {
         let outcome = pipeline.process(&p, Some("bin"));
         assert_eq!(outcome.status, "unsupported");
         assert!(outcome.error.is_some());
+    }
+
+    #[test]
+    fn test_process_dockerfile_by_basename() {
+        let pipeline = ContentPipeline::new(default_registry());
+        let p = tmp(
+            "Dockerfile",
+            b"FROM alpine:3.20\nRUN apk add --no-cache curl\nCMD [\"sh\"]",
+        );
+        // No extension — routing must come via basename lookup.
+        let outcome = pipeline.process(&p, None);
+        assert_eq!(outcome.status, "indexed");
+        assert_eq!(outcome.extractor_name.as_deref(), Some("SourceCode"));
+        assert!(outcome.body_text.as_deref().unwrap().contains("alpine"));
+    }
+
+    #[test]
+    fn test_process_ini_file_by_extension() {
+        let pipeline = ContentPipeline::new(default_registry());
+        let p = tmp("settings.ini", b"[core]\nname=hollow\nversion=0.1");
+        let outcome = pipeline.process(&p, Some("ini"));
+        assert_eq!(outcome.status, "indexed");
+        assert_eq!(outcome.extractor_name.as_deref(), Some("PlainText"));
+        assert!(outcome.body_text.as_deref().unwrap().contains("hollow"));
+    }
+
+    #[test]
+    fn test_process_ics_calendar_by_extension() {
+        let pipeline = ContentPipeline::new(default_registry());
+        let ics = b"BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:team sync\nEND:VEVENT\nEND:VCALENDAR\n";
+        let p = tmp("meeting.ics", ics);
+        let outcome = pipeline.process(&p, Some("ics"));
+        assert_eq!(outcome.status, "indexed");
+        assert_eq!(outcome.extractor_name.as_deref(), Some("PlainText"));
+        assert!(outcome.body_text.as_deref().unwrap().contains("team sync"));
+    }
+
+    #[test]
+    fn test_process_terraform_by_extension() {
+        let pipeline = ContentPipeline::new(default_registry());
+        let tf = b"resource \"aws_s3_bucket\" \"main\" {\n  bucket = \"hollow-bucket\"\n}\n";
+        let p = tmp("infra.tf", tf);
+        let outcome = pipeline.process(&p, Some("tf"));
+        assert_eq!(outcome.status, "indexed");
+        assert_eq!(outcome.extractor_name.as_deref(), Some("SourceCode"));
     }
 }

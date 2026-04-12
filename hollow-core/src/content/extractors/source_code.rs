@@ -17,13 +17,62 @@ impl SourceCodeExtractor {
     }
 
     /// Extensions this extractor can handle as a fallback when MIME is unclear.
+    /// Note: html/htm/xhtml are intentionally *not* here — they're handled by
+    /// HtmlExtractor, which strips tags instead of indexing raw markup.
     pub fn known_extensions() -> &'static [&'static str] {
         &[
+            // Mainstream languages (Batch 1)
             "py", "js", "ts", "jsx", "tsx", "rs", "swift", "go", "java", "kt",
             "scala", "c", "cc", "cpp", "cxx", "h", "hh", "hpp", "m", "mm",
-            "rb", "sh", "bash", "zsh", "fish", "sql", "html", "htm", "css",
+            "rb", "sh", "bash", "zsh", "fish", "sql", "css",
             "scss", "sass", "less", "vue", "svelte", "lua", "pl", "pm", "php",
             "r", "dart", "ex", "exs", "erl", "hs", "clj", "cljs", "edn",
+            // Batch 2: Windows / scripting
+            "ps1", "psm1", "psd1", "bat", "cmd", "vbs", "wsf",
+            "awk", "sed", "tcl", "expect",
+            // Batch 2: JVM / .NET
+            "groovy", "gradle", "vb", "vbnet", "cs", "fs", "fsi", "fsx", "fsscript",
+            // Batch 2: Systems / native
+            "nim", "zig", "cr", "jl", "d", "pas", "pp",
+            "f", "f77", "f90", "f95", "f03", "f08", "for", "fpp",
+            "ada", "adb", "ads",
+            "asm", "s", "inc",
+            // Batch 2: Hardware description
+            "v", "sv", "svh", "vhd", "vhdl",
+            // Batch 2: Smart contracts / emerging
+            "sol", "move", "cairo", "ink",
+            // Batch 2: Functional
+            "ml", "mli", "purs", "elm", "agda", "idr", "lean",
+            // Batch 2: Lisp family
+            "el", "lisp", "lsp", "scm", "ss", "rkt",
+            // Batch 2: Infra-as-code / build DSLs
+            "nix", "tf", "tfvars", "hcl", "bzl", "bazel", "starlark", "star",
+            "cmake", "mk", "mak", "make",
+            "jenkinsfile", "gitlab-ci", "sbt",
+            // Batch 2: Data science
+            "rmd", "qmd", "sage", "ipynb",
+            // Batch 2: Misc
+            "pde", "ino", // Processing / Arduino
+            "coffee", "litcoffee",
+            "hx", // Haxe
+            "nim",
+            "raku", "rakumod", "p6",
+            "zep", "phtml",
+        ]
+    }
+
+    /// Exact filenames that look like build scripts or project manifests
+    /// without a file extension.
+    pub fn known_basenames() -> &'static [&'static str] {
+        &[
+            "Dockerfile", "Containerfile",
+            "Makefile", "GNUmakefile", "makefile",
+            "CMakeLists.txt",
+            "Jenkinsfile",
+            "BUILD", "BUILD.bazel", "WORKSPACE", "WORKSPACE.bazel",
+            "meson.build",
+            "Vagrantfile",
+            "Justfile", "justfile",
         ]
     }
 }
@@ -48,8 +97,8 @@ const SUPPORTED_MIMES: &[&str] = &[
     "application/typescript",
     "text/javascript",
     "text/typescript",
-    "text/html",
     "text/css",
+    // Note: text/html is handled by HtmlExtractor.
 ];
 
 impl Extractor for SourceCodeExtractor {

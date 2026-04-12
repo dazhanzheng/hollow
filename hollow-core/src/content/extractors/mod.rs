@@ -1,3 +1,10 @@
 pub mod common;
+pub mod docx;
+pub mod epub;
+pub mod fb2;
+pub mod html;
+pub mod jupyter;
 pub mod plain_text;
+pub mod rtf;
 pub mod source_code;
+pub mod svg;
