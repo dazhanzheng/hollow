@@ -79,6 +79,9 @@ private struct SearchResultRow: View {
                 Text(result.fileName)
                     .font(.body.weight(.medium))
                 Spacer()
+                Text(String(format: "%.3f", result.rank))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.tertiary)
             }
             Text(result.currentPath)
                 .font(.caption)
