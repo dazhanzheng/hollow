@@ -1,5 +1,6 @@
 // hollow-core/src/lib.rs
 mod db;
+mod embedding;
 mod error;
 mod content;
 mod logging;
