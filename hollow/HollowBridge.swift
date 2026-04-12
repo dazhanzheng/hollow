@@ -317,7 +317,12 @@ final class HollowBridge: @unchecked Sendable {
 
     nonisolated func embedFile(fileId: String) -> Bool {
         guard let core else { return false }
-        return (try? core.embedFile(fileId: fileId)) ?? false
+        do {
+            return try core.embedFile(fileId: fileId)
+        } catch {
+            HollowLogger.embedding.error("embedFile failed for \(fileId): \(error)")
+            return false
+        }
     }
 
     nonisolated func hybridSearch(query: String, limit: UInt32 = 50) -> [SearchResult] {
