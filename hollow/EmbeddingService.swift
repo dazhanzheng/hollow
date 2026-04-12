@@ -21,6 +21,7 @@ final class EmbeddingService {
 
     /// Begin listening for `.fileIndexed` notifications and auto-process
     /// pending embeddings with a 3-second debounce to batch rapid extractions.
+    /// Also processes any pending embeddings from previous sessions on startup.
     func startListening() {
         notificationObserver = NotificationCenter.default.addObserver(
             forName: .fileIndexed,
@@ -30,6 +31,14 @@ final class EmbeddingService {
             Task { @MainActor in
                 self?.scheduleProcessing()
             }
+        }
+
+        // On startup, check for files that were indexed but never embedded
+        // (e.g. model was downloaded after extraction, or prior embed failed).
+        // Delay 5s to let the ingestion service finish its startup scan first.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(5))
+            processAllPending()
         }
     }
 

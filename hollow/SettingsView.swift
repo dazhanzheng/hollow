@@ -347,6 +347,13 @@ private struct ModelsSettingsView: View {
                                 .monospacedDigit()
                                 .foregroundStyle(.orange)
                         }
+                        Button("Embed All Now") {
+                            NotificationCenter.default.post(name: .fileIndexed, object: nil)
+                            // Refresh after a delay to show updated counts
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                                refreshID = UUID()
+                            }
+                        }
                     }
                 }
             }
