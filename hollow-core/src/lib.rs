@@ -78,6 +78,15 @@ pub struct ExtractedImage {
     pub mime: String,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct SearchResult {
+    pub file_id: String,
+    pub file_name: String,
+    pub current_path: String,
+    pub snippet: String,
+    pub rank: f64,
+}
+
 #[derive(uniffi::Object)]
 pub struct HollowCore {
     db: Mutex<Database>,
@@ -759,6 +768,29 @@ impl HollowCore {
             Ok(None)
         }
     }
+
+    /// Full-text search across all indexed file content.
+    /// Returns results ranked by FTS5 relevance, enriched with file metadata.
+    pub fn search(&self, query: String, limit: u32) -> Result<Vec<SearchResult>, HollowError> {
+        if query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+        let fts_results = FtsStore::search(&db.conn, &query, limit)?;
+        let mut results = Vec::with_capacity(fts_results.len());
+        for fts in fts_results {
+            if let Some(record) = FileStore::get_file(&db.conn, &fts.file_id)? {
+                results.push(SearchResult {
+                    file_id: fts.file_id,
+                    file_name: record.file_name,
+                    current_path: record.current_path,
+                    snippet: fts.snippet,
+                    rank: fts.rank,
+                });
+            }
+        }
+        Ok(results)
+    }
 }
 
 /// Quick hash: SHA-256 of file_size + 5 sampled 4KB blocks.
@@ -1273,6 +1305,25 @@ mod tests {
         let results = store::FtsStore::search(&db.conn, "searchable content", 10).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].file_id, record.id);
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_search_ffi() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_search_ffi", "report.txt", b"quarterly revenue report for Q4 2025");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+        core.extract_content(record.id.clone()).unwrap();
+
+        let results = core.search("revenue report".to_string(), 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].file_name, "report.txt");
+        assert!(!results[0].snippet.is_empty());
+
+        // Empty query returns empty
+        let empty = core.search("".to_string(), 10).unwrap();
+        assert!(empty.is_empty());
 
         cleanup(&[&path, &path.parent().unwrap()]);
     }
