@@ -74,7 +74,7 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
         let dylibDest = modelsBase.appendingPathComponent("libonnxruntime.dylib")
         guard !FileManager.default.fileExists(atPath: dylibDest.path) else { return }
 
-        let tgzURL = URL(string: "https://github.com/microsoft/onnxruntime/releases/download/v1.22.0/onnxruntime-osx-arm64-1.22.0.tgz")!
+        let tgzURL = URL(string: "https://github.com/microsoft/onnxruntime/releases/download/v1.23.0/onnxruntime-osx-arm64-1.23.0.tgz")!
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
@@ -94,12 +94,12 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
         try process.run()
         process.waitUntilExit()
 
-        // Known path: onnxruntime-osx-arm64-1.22.0/lib/libonnxruntime.1.22.0.dylib
+        // Known path: onnxruntime-osx-arm64-1.23.0/lib/libonnxruntime.1.23.0.dylib
         // This is the real dylib. The archive also contains a symlink and a
         // dSYM directory with a same-named debug companion — we must use the
         // exact path to avoid picking up the wrong file.
         let dylibSource = extractDir
-            .appendingPathComponent("onnxruntime-osx-arm64-1.22.0/lib/libonnxruntime.1.22.0.dylib")
+            .appendingPathComponent("onnxruntime-osx-arm64-1.23.0/lib/libonnxruntime.1.23.0.dylib")
         guard FileManager.default.fileExists(atPath: dylibSource.path) else {
             throw URLError(.cannotCreateFile, userInfo: [
                 NSLocalizedDescriptionKey: "libonnxruntime.1.22.0.dylib not found in archive"
