@@ -893,7 +893,16 @@ impl HollowCore {
         }
 
         // Run inference
-        let truncated = if text.len() > 8000 { &text[..8000] } else { &text };
+        // Truncate to ~8000 bytes, snapping to a char boundary.
+        let truncated = if text.len() > 8000 {
+            let mut end = 8000;
+            while end > 0 && !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            &text[..end]
+        } else {
+            &text
+        };
         let model = model_lock.as_mut().unwrap();
         let embedding = model.embed(truncated)?;
 

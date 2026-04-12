@@ -42,17 +42,21 @@ impl EmbeddingModel {
             .map(|&m| m as i64)
             .collect();
         let seq_len = input_ids.len();
+        let position_ids: Vec<i64> = (0..seq_len as i64).collect();
 
         let input_ids_tensor = Tensor::from_array(([1, seq_len], input_ids))
             .map_err(|e| HollowError::InvalidInput(format!("input_ids tensor: {}", e)))?;
         let attention_mask_tensor = Tensor::from_array(([1, seq_len], attention_mask))
             .map_err(|e| HollowError::InvalidInput(format!("attention_mask tensor: {}", e)))?;
+        let position_ids_tensor = Tensor::from_array(([1, seq_len], position_ids))
+            .map_err(|e| HollowError::InvalidInput(format!("position_ids tensor: {}", e)))?;
 
         let outputs = self
             .session
             .run(ort::inputs![
                 "input_ids" => input_ids_tensor,
                 "attention_mask" => attention_mask_tensor,
+                "position_ids" => position_ids_tensor,
             ])
             .map_err(|e| HollowError::InvalidInput(format!("ONNX run: {}", e)))?;
 
