@@ -34,21 +34,21 @@ impl ModelManager {
                 variant: ModelVariant::Qwen3Small,
                 name: "qwen3-embedding-0.6b-int8".to_string(),
                 display_name: "Qwen3 Embedding 0.6B (INT8)".to_string(),
-                description: "Default model. Good balance of quality and speed for Chinese + English."
+                description: "Recommended. Good quality for Chinese + English, runs on any Mac."
                     .to_string(),
-                download_size_mb: 600,
+                download_size_mb: 586,
                 ram_usage_mb: 400,
                 dimensions: 1024,
             },
             ModelInfo {
                 variant: ModelVariant::Qwen3Large,
                 name: "qwen3-embedding-4b-int8".to_string(),
-                display_name: "Qwen3 Embedding 4B (INT8)".to_string(),
+                display_name: "Qwen3 Embedding 4B".to_string(),
                 description:
-                    "High quality model. Better accuracy but uses more memory and CPU."
+                    "Higher accuracy. Requires 32 GB+ RAM. Coming soon."
                         .to_string(),
-                download_size_mb: 4000,
-                ram_usage_mb: 3000,
+                download_size_mb: 8000,
+                ram_usage_mb: 5000,
                 dimensions: 1024,
             },
         ]

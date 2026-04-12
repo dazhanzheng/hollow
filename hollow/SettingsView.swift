@@ -293,12 +293,15 @@ private struct PluginToggleRow: View {
 private struct ModelsSettingsView: View {
     @State private var models: [EmbeddingModelInfo] = []
     @State private var embeddingStatus: EmbeddingStatus?
+    @State private var refreshID = UUID()
 
     var body: some View {
         Form {
             Section {
                 ForEach(models, id: \.name) { model in
-                    ModelRow(model: model)
+                    ModelRow(model: model, onDownloadComplete: {
+                        refreshID = UUID()
+                    })
                 }
             } header: {
                 Text("Embedding Models")
@@ -329,7 +332,7 @@ private struct ModelsSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .task {
+        .task(id: refreshID) {
             models = HollowBridge.shared.listEmbeddingModels()
             embeddingStatus = HollowBridge.shared.getEmbeddingStatus()
         }
@@ -338,6 +341,8 @@ private struct ModelsSettingsView: View {
 
 private struct ModelRow: View {
     let model: EmbeddingModelInfo
+    var onDownloadComplete: (() -> Void)?
+    @State private var downloader = ModelDownloader()
 
     var body: some View {
         HStack {
@@ -367,6 +372,12 @@ private struct ModelRow: View {
                         }
                     }
                 }
+
+                if let error = downloader.error {
+                    Text(error)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                }
             }
 
             Spacer()
@@ -374,9 +385,26 @@ private struct ModelRow: View {
             if model.isDownloaded {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
+            } else if model.description.contains("Coming soon") {
+                Text("Coming soon")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if downloader.isDownloading {
+                VStack(spacing: 4) {
+                    ProgressView(value: downloader.progress)
+                        .frame(width: 80)
+                    Text("\(Int(downloader.progress * 100))%")
+                        .font(.caption2)
+                        .monospacedDigit()
+                }
             } else {
                 Button("Download") {
-                    // Model download will be connected when download infrastructure is ready
+                    Task {
+                        try? await downloader.downloadDefaultModel()
+                        if downloader.error == nil {
+                            onDownloadComplete?()
+                        }
+                    }
                 }
                 .buttonStyle(.bordered)
             }
