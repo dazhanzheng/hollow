@@ -12,7 +12,7 @@ pub use logging::{LogEntry, LogLevel};
 use content::pipeline::ContentPipeline;
 use content::registry::default_registry;
 use db::Database;
-use store::{FileContentStore, FileStore};
+use store::{FileContentStore, FileStore, FtsStore};
 
 use sha2::{Sha256, Digest};
 use std::fs;
@@ -398,6 +398,12 @@ impl HollowCore {
                     &extracted_at,
                 )?;
                 FileStore::update_status(&db.conn, &file_id, "indexed")?;
+                // Populate FTS5 index with the extracted text
+                if let Some(ref text) = outcome.body_text {
+                    if !text.is_empty() {
+                        FtsStore::index(&db.conn, &file_id, text)?;
+                    }
+                }
                 info!(
                     "Extracted content: {} ({} bytes, {})",
                     file_id,
@@ -569,6 +575,13 @@ impl HollowCore {
 
         let extracted_at = iso8601_now();
 
+        // Keep a copy of the body text for FTS5 indexing (compression consumes it)
+        let body_text_for_fts = if status == "indexed" {
+            body_text.clone()
+        } else {
+            None
+        };
+
         // Step 2: If indexed, compress the caller-supplied body_text outside
         // the mutex (matches Rust pipeline behavior — zstd is CPU heavy).
         let (body_text_bytes, compressed_body): (u64, Option<Vec<u8>>) = if status == "indexed" {
@@ -618,6 +631,11 @@ impl HollowCore {
                     &extracted_at,
                 )?;
                 FileStore::update_status(&db.conn, &file_id, "indexed")?;
+                if let Some(ref text) = body_text_for_fts {
+                    if !text.is_empty() {
+                        FtsStore::index(&db.conn, &file_id, text)?;
+                    }
+                }
                 info!(
                     "External extraction indexed: {} ({} bytes, {})",
                     file_id, body_text_bytes, extractor_name
@@ -1238,6 +1256,23 @@ mod tests {
 
         let fetched = core.get_file(record.id).unwrap().unwrap();
         assert_eq!(fetched.status, "unsupported");
+
+        cleanup(&[&path, &path.parent().unwrap()]);
+    }
+
+    #[test]
+    fn test_extract_content_populates_fts5() {
+        let core = HollowCore::new(":memory:".to_string()).unwrap();
+        let path = make_temp_file("hollow_t_fts_int", "note.txt", b"searchable content here");
+        let record = core.ingest_file(path.to_string_lossy().to_string()).unwrap();
+
+        core.extract_content(record.id.clone()).unwrap();
+
+        // Verify FTS5 was populated by searching
+        let db = core.db.lock().unwrap();
+        let results = store::FtsStore::search(&db.conn, "searchable content", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].file_id, record.id);
 
         cleanup(&[&path, &path.parent().unwrap()]);
     }
