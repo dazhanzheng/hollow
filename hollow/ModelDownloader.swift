@@ -94,22 +94,16 @@ final class ModelDownloader: NSObject, @unchecked Sendable {
         try process.run()
         process.waitUntilExit()
 
-        // Find the dylib — prefer the unversioned name (symlink), fall back to versioned
-        let enumerator = FileManager.default.enumerator(at: extractDir, includingPropertiesForKeys: nil)
+        // Find the versioned dylib (the real file, not the symlink).
+        // e.g. libonnxruntime.1.22.0.dylib
+        let enumerator = FileManager.default.enumerator(at: extractDir, includingPropertiesForKeys: [.isSymbolicLinkKey])
         while let fileURL = enumerator?.nextObject() as? URL {
-            if fileURL.lastPathComponent.hasPrefix("libonnxruntime.") && fileURL.pathExtension == "dylib" && !fileURL.lastPathComponent.contains(".1.") {
-                try FileManager.default.copyItem(at: fileURL, to: dylibDest)
-                HollowLogger.embedding.info("ONNX Runtime dylib installed")
-                return
-            }
-        }
-
-        // If symlink not found, try versioned file
-        let enumerator2 = FileManager.default.enumerator(at: extractDir, includingPropertiesForKeys: nil)
-        while let fileURL = enumerator2?.nextObject() as? URL {
+            // Skip symlinks — we want the actual binary
+            let isSymlink = (try? fileURL.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) ?? false
+            guard !isSymlink else { continue }
             if fileURL.lastPathComponent.contains("libonnxruntime") && fileURL.pathExtension == "dylib" {
                 try FileManager.default.copyItem(at: fileURL, to: dylibDest)
-                HollowLogger.embedding.info("ONNX Runtime dylib installed (versioned)")
+                HollowLogger.embedding.info("ONNX Runtime dylib installed (\(fileURL.lastPathComponent))")
                 return
             }
         }
