@@ -4,6 +4,7 @@ mod embedding;
 mod error;
 mod content;
 mod logging;
+mod search;
 mod store;
 
 pub use db::models::FileRecord;
@@ -917,6 +918,49 @@ impl HollowCore {
                     current_path: record.current_path,
                     snippet: fts.snippet,
                     rank: fts.rank,
+                });
+            }
+        }
+        Ok(results)
+    }
+
+    /// Hybrid search: combines full-text (FTS5) and semantic (embedding) search.
+    /// If embedding model is loaded, the query text is also embedded for vector search.
+    /// Falls back to FTS5-only if no model is available.
+    pub fn hybrid_search(&self, query: String, limit: u32) -> Result<Vec<SearchResult>, HollowError> {
+        if query.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Try to embed the query for vector search
+        let query_embedding: Option<Vec<f32>> = {
+            let mut model_lock = self.embedding_model.lock()
+                .map_err(|e| HollowError::InvalidInput(e.to_string()))?;
+            if let Some(ref mut model) = *model_lock {
+                model.embed(&query).ok()
+            } else {
+                None
+            }
+        };
+
+        let db = self.db.lock().map_err(|e| HollowError::Database(e.to_string()))?;
+
+        let hybrid_results = search::HybridSearcher::search(
+            &db.conn,
+            &query,
+            query_embedding.as_deref(),
+            limit,
+        )?;
+
+        let mut results = Vec::with_capacity(hybrid_results.len());
+        for hr in hybrid_results {
+            if let Some(record) = FileStore::get_file(&db.conn, &hr.file_id)? {
+                results.push(SearchResult {
+                    file_id: hr.file_id,
+                    file_name: record.file_name,
+                    current_path: record.current_path,
+                    snippet: hr.snippet.unwrap_or_default(),
+                    rank: hr.score as f64,
                 });
             }
         }
