@@ -403,8 +403,16 @@ private struct ModelRow: View {
             Spacer()
 
             if model.isDownloaded {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                VStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Button("Delete", role: .destructive) {
+                        deleteModel()
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.red)
+                }
             } else if model.description.contains("Coming soon") {
                 Text("Coming soon")
                     .font(.caption)
@@ -429,6 +437,16 @@ private struct ModelRow: View {
                 .buttonStyle(.bordered)
             }
         }
+    }
+
+    private func deleteModel() {
+        guard let modelsDir = try? HollowBridge.modelsDirectory() else { return }
+        let modelDir = modelsDir.appendingPathComponent(model.name)
+        try? FileManager.default.removeItem(at: modelDir)
+        // Also remove ONNX Runtime dylib since it's only needed for embedding
+        let dylib = modelsDir.appendingPathComponent("libonnxruntime.dylib")
+        try? FileManager.default.removeItem(at: dylib)
+        onDownloadComplete?() // triggers refresh
     }
 }
 
