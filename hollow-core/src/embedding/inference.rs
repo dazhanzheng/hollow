@@ -78,7 +78,8 @@ impl EmbeddingModel {
         let float_data: Vec<f32> = if let Ok((shape, data)) = output.try_extract_tensor::<f32>() {
             extract_embedding(&shape, data)?
         } else if let Ok((shape, data)) = output.try_extract_tensor::<u8>() {
-            let as_float: Vec<f32> = data.iter().map(|&v| v as f32 / 255.0).collect();
+            // uint8 symmetric quantization: 128 = zero point, range maps to -1..+1
+            let as_float: Vec<f32> = data.iter().map(|&v| (v as f32 - 128.0) / 128.0).collect();
             extract_embedding(&shape, &as_float)?
         } else {
             return Err(HollowError::InvalidInput(
