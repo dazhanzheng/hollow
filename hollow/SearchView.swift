@@ -4,20 +4,22 @@ struct SearchView: View {
     @State private var query = ""
     @State private var results: [SearchResult] = []
     @State private var isSearching = false
+    @State private var hasSearched = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // Search bar
+            // Search bar — always pinned at top
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Search files…", text: $query)
+                TextField("Search files… (press Return)", text: $query)
                     .textFieldStyle(.plain)
                     .onSubmit { performSearch() }
                 if !query.isEmpty {
                     Button {
                         query = ""
                         results = []
+                        hasSearched = false
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
@@ -30,9 +32,30 @@ struct SearchView: View {
 
             Divider()
 
-            // Results
-            if results.isEmpty && !query.isEmpty && !isSearching {
-                ContentUnavailableView.search(text: query)
+            // Results area — always fills remaining space
+            if !hasSearched {
+                // Initial state: empty prompt
+                VStack {
+                    Spacer()
+                    Text("Type a query and press Return to search")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if results.isEmpty {
+                // Searched but no results
+                VStack {
+                    Spacer()
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.tertiary)
+                    Text("No results for \"\(query)\"")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(results, id: \.fileId) { result in
                     SearchResultRow(result: result)
@@ -41,28 +64,21 @@ struct SearchView: View {
             }
         }
         .frame(minWidth: 500, minHeight: 400)
-        .onChange(of: query) {
-            if query.count >= 3 {
-                performSearch()
-            } else if query.isEmpty {
-                results = []
-            }
-        }
     }
 
     private func performSearch() {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 2 else { return }
         isSearching = true
-        let currentQuery = query
+        hasSearched = true
         DispatchQueue.global(qos: .userInitiated).async {
             let searchResults = HollowBridge.shared.hybridSearch(
-                query: currentQuery,
+                query: trimmed,
                 limit: 50
             )
             DispatchQueue.main.async {
-                if query == currentQuery {
-                    results = searchResults
-                    isSearching = false
-                }
+                results = searchResults
+                isSearching = false
             }
         }
     }
@@ -93,10 +109,12 @@ private struct SearchResultRow: View {
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Text(snippetPlainText(result.snippet))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
+            if !result.snippet.isEmpty {
+                Text(snippetPlainText(result.snippet))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
