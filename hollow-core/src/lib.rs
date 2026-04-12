@@ -956,11 +956,16 @@ impl HollowCore {
         }
 
         // Try to embed the query for vector search.
-        // If the model lock is poisoned (prior panic) or no model loaded, skip
-        // embedding and fall back to FTS-only — search must never fail just
-        // because embedding isn't available.
+        // Lazy-load the model if it's downloaded but not yet in memory.
+        // If anything fails, skip embedding and fall back to FTS-only.
         let query_embedding: Option<Vec<f32>> = match self.embedding_model.lock() {
             Ok(mut model_lock) => {
+                // Lazy-load model if not yet loaded
+                if model_lock.is_none() {
+                    if let Ok(true) = self.try_load_embedding_model(&mut model_lock) {
+                        info!("Embedding model loaded for search");
+                    }
+                }
                 if let Some(ref mut model) = *model_lock {
                     model.embed(&query).ok()
                 } else {
@@ -992,6 +997,30 @@ impl HollowCore {
             }
         }
         Ok(results)
+    }
+
+}
+
+impl HollowCore {
+    /// Try to load the embedding model into the given lock guard.
+    /// Returns Ok(true) if loaded, Ok(false) if not available, Err on failure.
+    fn try_load_embedding_model(
+        &self,
+        model_lock: &mut std::sync::MutexGuard<'_, Option<EmbeddingModel>>,
+    ) -> Result<bool, HollowError> {
+        if std::env::var("ORT_DYLIB_PATH").map_or(true, |p| !Path::new(&p).exists()) {
+            return Ok(false);
+        }
+        let model_path = self.model_manager.model_path(&ModelVariant::Qwen3Small);
+        let tokenizer_path = self.model_manager.tokenizer_path(&ModelVariant::Qwen3Small);
+        if !model_path.exists() || !tokenizer_path.exists() {
+            return Ok(false);
+        }
+        info!("Loading embedding model...");
+        let model = EmbeddingModel::load(&model_path, &tokenizer_path)?;
+        **model_lock = Some(model);
+        info!("Embedding model loaded");
+        Ok(true)
     }
 }
 
