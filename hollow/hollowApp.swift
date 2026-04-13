@@ -1,3 +1,5 @@
+import AppKit
+import KeyboardShortcuts
 import SwiftUI
 import os
 
@@ -28,6 +30,29 @@ struct hollowApp: App {
             UserDefaults.standard.set([lang], forKey: "AppleLanguages")
         } else {
             UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+        }
+
+        // Register the global Spotlight search hotkey. Uses the shared
+        // top-level coordinator so the closure doesn't capture a SwiftUI
+        // state wrapper.
+        KeyboardShortcuts.onKeyDown(for: .spotlightSearch) {
+            Task { @MainActor in
+                spotlightCoordinator.toggle()
+            }
+        }
+
+        // Hide the overlay when the app is deactivated (user clicks into
+        // another app). This is a belt-and-braces in addition to the
+        // NSPanel didResignKey observer, since non-activating panels can
+        // briefly keep key status during cross-app switches.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                spotlightCoordinator.hide()
+            }
         }
     }
 
@@ -217,6 +242,14 @@ struct hollowApp: App {
         }
     }
 }
+
+/// Process-wide singleton for the Spotlight search coordinator. Declared at
+/// module scope because the `KeyboardShortcuts.onKeyDown` callback is
+/// registered in `hollowApp.init()` and needs a stable object reference that
+/// a SwiftUI `@State` property cannot provide. There is only ever one global
+/// search overlay for the whole app, so a shared instance is the right fit.
+@MainActor
+let spotlightCoordinator: SpotlightCoordinator = SpotlightCoordinator.makeProduction()
 
 // MARK: - Sidebar Prompt
 
