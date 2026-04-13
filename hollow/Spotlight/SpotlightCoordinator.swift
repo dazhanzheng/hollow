@@ -17,11 +17,21 @@ final class SpotlightCoordinator {
     var results: [SearchResult] = []
     var selectedIndex: Int = 0
 
+    typealias PanelAction = @MainActor () -> Void
+
     private let searcher: Searcher
+    private let presenter: PanelAction
+    private let dismisser: PanelAction
     private var searchTask: Task<Void, Never>?
 
-    init(searcher: @escaping Searcher) {
+    init(
+        searcher: @escaping Searcher,
+        presenter: @escaping PanelAction = {},
+        dismisser: @escaping PanelAction = {}
+    ) {
         self.searcher = searcher
+        self.presenter = presenter
+        self.dismisser = dismisser
     }
 
     func toggle() {
@@ -34,6 +44,7 @@ final class SpotlightCoordinator {
 
     func show() {
         isVisible = true
+        presenter()
     }
 
     func hide() {
@@ -43,6 +54,7 @@ final class SpotlightCoordinator {
         query = ""
         results = []
         selectedIndex = 0
+        dismisser()
     }
 
     /// Debounce window (in milliseconds) between the last keystroke and
@@ -105,5 +117,63 @@ final class SpotlightCoordinator {
         let url = URL(fileURLWithPath: result.currentPath)
         NSWorkspace.shared.activateFileViewerSelecting([url])
         hide()
+    }
+
+    /// Production factory: wires the real hybrid search + a real `SpotlightPanel`.
+    /// The panel and its key-resigned observer are owned by the factory-level
+    /// holder pair below; the coordinator only knows how to ask them to
+    /// appear / disappear.
+    static func makeProduction() -> SpotlightCoordinator {
+        // Lazily constructed on first `show()`; held for the lifetime of the
+        // coordinator so we don't rebuild it per toggle.
+        final class PanelHolder {
+            var panel: SpotlightPanel?
+            var resignObserver: NSObjectProtocol?
+        }
+        let holder = PanelHolder()
+
+        // Declared as `var` first so we can reference `coordinator` inside
+        // the presenter closure (circular dep: closure needs coordinator,
+        // coordinator needs closure).
+        var coordinator: SpotlightCoordinator!
+
+        let searcher: Searcher = { query, limit in
+            await withCheckedContinuation { cont in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let hits = HollowBridge.shared.hybridSearch(query: query, limit: limit)
+                    cont.resume(returning: hits)
+                }
+            }
+        }
+
+        let presenter: PanelAction = { [holder] in
+            if holder.panel == nil {
+                let view = SpotlightView(coordinator: coordinator)
+                let p = SpotlightPanel(rootView: view)
+                holder.panel = p
+                holder.resignObserver = NotificationCenter.default.addObserver(
+                    forName: NSWindow.didResignKeyNotification,
+                    object: p,
+                    queue: .main
+                ) { _ in
+                    Task { @MainActor in coordinator.hide() }
+                }
+            }
+            guard let panel = holder.panel else { return }
+            panel.positionCentered()
+            panel.setContentSize(NSSize(width: 680, height: 60))
+            panel.makeKeyAndOrderFront(nil)
+        }
+
+        let dismisser: PanelAction = { [holder] in
+            holder.panel?.orderOut(nil)
+        }
+
+        coordinator = SpotlightCoordinator(
+            searcher: searcher,
+            presenter: presenter,
+            dismisser: dismisser
+        )
+        return coordinator
     }
 }
