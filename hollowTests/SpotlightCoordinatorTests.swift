@@ -84,6 +84,65 @@ struct SpotlightCoordinatorTests {
         // earlier tasks were cancelled before their Task.sleep completed.
         #expect(callLog == ["foo"])
     }
+
+    @Test
+    func moveSelectionDownAdvances() {
+        let c = makeCoordinator()
+        c.results = [
+            .stub(fileName: "a.txt"),
+            .stub(fileName: "b.txt"),
+            .stub(fileName: "c.txt"),
+        ]
+        c.selectedIndex = 0
+        c.moveSelectionDown()
+        #expect(c.selectedIndex == 1)
+        c.moveSelectionDown()
+        #expect(c.selectedIndex == 2)
+    }
+
+    @Test
+    func moveSelectionDownStopsAtLastRow() {
+        let c = makeCoordinator()
+        c.results = [
+            .stub(fileName: "a.txt"),
+            .stub(fileName: "b.txt"),
+        ]
+        c.selectedIndex = 1
+        c.moveSelectionDown()
+        #expect(c.selectedIndex == 1) // stays pinned, does not wrap
+    }
+
+    @Test
+    func moveSelectionUpGoesBack() {
+        let c = makeCoordinator()
+        c.results = [
+            .stub(fileName: "a.txt"),
+            .stub(fileName: "b.txt"),
+            .stub(fileName: "c.txt"),
+        ]
+        c.selectedIndex = 2
+        c.moveSelectionUp()
+        #expect(c.selectedIndex == 1)
+    }
+
+    @Test
+    func moveSelectionUpStopsAtFirstRow() {
+        let c = makeCoordinator()
+        c.results = [.stub(fileName: "a.txt")]
+        c.selectedIndex = 0
+        c.moveSelectionUp()
+        #expect(c.selectedIndex == 0) // stays pinned
+    }
+
+    @Test
+    func selectionNoopWhenResultsEmpty() {
+        let c = makeCoordinator()
+        c.results = []
+        c.selectedIndex = 0
+        c.moveSelectionDown()
+        c.moveSelectionUp()
+        #expect(c.selectedIndex == 0)
+    }
 }
 
 extension SearchResult {

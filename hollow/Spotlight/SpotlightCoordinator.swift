@@ -71,4 +71,20 @@ final class SpotlightCoordinator {
             self.selectedIndex = 0
         }
     }
+
+    func moveSelectionDown() {
+        guard !results.isEmpty else { return }
+        selectedIndex = min(selectedIndex + 1, results.count - 1)
+    }
+
+    func moveSelectionUp() {
+        guard !results.isEmpty else { return }
+        selectedIndex = max(selectedIndex - 1, 0)
+    }
+
+    /// Currently selected result, if any.
+    var selectedResult: SearchResult? {
+        guard results.indices.contains(selectedIndex) else { return nil }
+        return results[selectedIndex]
+    }
 }
