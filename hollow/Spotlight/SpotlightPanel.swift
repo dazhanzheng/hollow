@@ -10,7 +10,7 @@ final class SpotlightPanel: NSPanel {
     init(rootView: SpotlightView) {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 680, height: 60),
-            styleMask: [.borderless, .nonactivatingPanel, .hudWindow],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )

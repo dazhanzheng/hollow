@@ -35,10 +35,10 @@ struct SpotlightResultRow: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
-        .frame(height: 52)
+        .frame(height: 56)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: 8)
                 .fill(isSelected ? Color.accentColor : .clear)
                 .padding(.horizontal, 8)
         )

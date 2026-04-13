@@ -21,16 +21,14 @@ struct SpotlightView: View {
 
             searchField
             if !coordinator.query.isEmpty || !coordinator.results.isEmpty {
-                Divider()
                 resultsSection
             } else {
-                Divider()
                 emptyState
             }
         }
         .frame(width: 680)
         .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 22))
         .onAppear { fieldFocused = true }
         .onChange(of: coordinator.isVisible) { _, visible in
             if visible { fieldFocused = true }
@@ -62,29 +60,29 @@ struct SpotlightView: View {
     private var searchField: some View {
         HStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(.tertiary)
 
             TextField("Search hollow...", text: Binding(
                 get: { coordinator.query },
                 set: { coordinator.onQueryChange($0) }
             ))
             .textFieldStyle(.plain)
-            .font(.system(size: 22, weight: .regular))
+            .font(.system(size: 24, weight: .regular))
             .focused($fieldFocused)
         }
         .padding(.horizontal, 24)
-        .frame(height: 60)
+        .frame(height: 64)
     }
 
     private var resultsSection: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 4) {
             if coordinator.results.isEmpty {
                 Text("No matches")
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                    .frame(height: 56)
             } else {
                 ForEach(Array(coordinator.results.enumerated()), id: \.offset) { index, result in
                     SpotlightResultRow(
@@ -98,12 +96,10 @@ struct SpotlightView: View {
                     .onHover { hovering in
                         if hovering { coordinator.selectedIndex = index }
                     }
-                    if index < coordinator.results.count - 1 {
-                        Divider().padding(.horizontal, 20)
-                    }
                 }
             }
         }
+        .padding(.vertical, 8)
     }
 
     private var emptyState: some View {
@@ -111,6 +107,7 @@ struct SpotlightView: View {
             .font(.system(size: 13))
             .foregroundStyle(.tertiary)
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
+            .frame(height: 56)
+            .padding(.vertical, 8)
     }
 }
