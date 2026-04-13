@@ -362,6 +362,9 @@
     "General" : {
 
     },
+    "Global Search" : {
+
+    },
     "Hashes" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -556,6 +559,9 @@
     "No files" : {
 
     },
+    "No matches" : {
+
+    },
     "No parser plugins available." : {
 
     },
@@ -643,6 +649,9 @@
     "Plugins" : {
 
     },
+    "Press this shortcut from anywhere to open the Hollow search overlay. Click the ⓧ in the recorder to disable it entirely." : {
+
+    },
     "Quick Hash" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -722,6 +731,9 @@
     "Resume Watching" : {
 
     },
+    "Reveal" : {
+
+    },
     "Reveal in Finder" : {
       "localizations" : {
         "zh-Hans" : {
@@ -762,6 +774,12 @@
 
     },
     "Search files… (press Return)" : {
+
+    },
+    "Search hollow..." : {
+
+    },
+    "Search hotkey:" : {
 
     },
     "Search..." : {
@@ -830,6 +848,9 @@
 
     },
     "Standard" : {
+
+    },
+    "Start typing to search..." : {
 
     },
     "Starting..." : {
