@@ -115,6 +115,25 @@
 - [x] **开机自启动**：`SMAppService.mainApp` + 首次启动 prompt + Settings toggle + `.requiresApproval` 处理
 - [x] **启动幂等性**：`@State didStartup` guard + `IngestionService.start()` 自身 `guard !isWatching`
 
+### Spotlight 风格全局搜索浮层（2026-04-13）
+
+- [x] `sindresorhus/KeyboardShortcuts` SPM 依赖（项目首个 SPM 包）
+- [x] `SpotlightCoordinator` 状态机（@Observable 单例，250ms debounce，↑↓ 导航，Open/Reveal 动作）
+- [x] `SpotlightPanel` NSPanel 子类（.borderless + .nonactivatingPanel + .hudWindow + .floating，多屏定位）
+- [x] `SpotlightView` SwiftUI 视图（⌥Space toggle，↵ Open，⌘↵ Reveal，ESC/点击外部/切 App 关闭）
+- [x] `SpotlightResultRow` 紧凑两行（48pt 系统图标 + 文件名 + FTS5 snippet）
+- [x] `hollowApp.init()` 注册 `KeyboardShortcuts.onKeyDown` + `NSApplication.didResignActiveNotification` 观察者
+- [x] Settings → General → Global Search 可录制/禁用快捷键
+- [x] 11 个 Swift Testing 单测覆盖状态机 + debounce + 选中导航（presenter/dismisser 闭包注入，测试零 AppKit 依赖）
+
+**v1 简化**：
+- 结果行右侧未显示相对时间（SearchResult FFI 无 timestamp 字段）
+- 空查询状态显示 placeholder 文字，未列出最近文件（IngestionService.recentFiles 是纯文件名数组）
+
+**相关文档**：
+- Spec: `docs/superpowers/specs/2026-04-13-spotlight-search-overlay-design.md`
+- Plan: `docs/superpowers/plans/2026-04-13-spotlight-search-overlay.md`
+
 ---
 
 ## 当前状态
@@ -122,6 +141,7 @@
 | 指标 | 数值 |
 |---|---|
 | Rust 测试 | 158 green |
+| Swift 测试 | 11 SpotlightCoordinatorTests + 1 example + 4 UI tests, all green |
 | Rust extractors | 9 个（text-only） |
 | Rust image_docs | 4 个（text + image bytes 联合抽取） |
 | Swift extractors | 7 个（Vision OCR） |
