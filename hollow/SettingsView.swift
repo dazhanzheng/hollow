@@ -1,5 +1,6 @@
 import SwiftUI
 import ServiceManagement
+import KeyboardShortcuts
 
 struct SettingsView: View {
     var body: some View {
@@ -99,6 +100,16 @@ private struct GeneralSettingsView: View {
             Section("Menu Bar") {
                 Toggle("Show Hollow in menu bar", isOn: $showMenuBarIcon)
                 Text("Keeps a status icon in the menu bar with quick access to stats, inbox, and controls.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Global Search") {
+                KeyboardShortcuts.Recorder(
+                    String(localized: "Search hotkey:"),
+                    name: .spotlightSearch
+                )
+                Text("Press this shortcut from anywhere to open the Hollow search overlay. Click the ⓧ in the recorder to disable it entirely.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
