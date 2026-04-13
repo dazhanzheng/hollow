@@ -1,4 +1,5 @@
 // hollow/Spotlight/SpotlightCoordinator.swift
+import AppKit
 import Foundation
 import Observation
 
@@ -86,5 +87,23 @@ final class SpotlightCoordinator {
     var selectedResult: SearchResult? {
         guard results.indices.contains(selectedIndex) else { return nil }
         return results[selectedIndex]
+    }
+
+    /// Execute the "primary" action (↵) on the currently-selected result:
+    /// open the file with the system's default app, then hide the panel.
+    func openSelected() {
+        guard let result = selectedResult else { return }
+        let url = URL(fileURLWithPath: result.currentPath)
+        NSWorkspace.shared.open(url)
+        hide()
+    }
+
+    /// Execute the "secondary" action (⌘↵) on the currently-selected result:
+    /// reveal the file in a new Finder window, then hide the panel.
+    func revealSelected() {
+        guard let result = selectedResult else { return }
+        let url = URL(fileURLWithPath: result.currentPath)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+        hide()
     }
 }
