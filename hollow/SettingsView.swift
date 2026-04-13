@@ -44,6 +44,7 @@ private struct GeneralSettingsView: View {
     /// `.task` whenever the pane appears.
     @State private var launchAtLogin: Bool = LaunchAtLogin.isEnabled
     @State private var launchAtLoginNeedsApproval: Bool = false
+    @State private var spotlightHotkey: SpotlightHotkeyChoice = .current()
 
     private let inboxPath = FileWatcher.inboxURL.path
     private let dbPath: String = {
@@ -105,11 +106,15 @@ private struct GeneralSettingsView: View {
             }
 
             Section("Global Search") {
-                KeyboardShortcuts.Recorder(
-                    String(localized: "Search hotkey:"),
-                    name: .spotlightSearch
-                )
-                Text("Press this shortcut from anywhere to open the Hollow search overlay. Click the ⓧ in the recorder to disable it entirely.")
+                Picker("Search hotkey:", selection: $spotlightHotkey) {
+                    ForEach(SpotlightHotkeyChoice.allCases) { choice in
+                        Text(choice.label).tag(choice)
+                    }
+                }
+                .onChange(of: spotlightHotkey) { _, newValue in
+                    KeyboardShortcuts.setShortcut(newValue.shortcut, for: .spotlightSearch)
+                }
+                Text("Press this shortcut from anywhere to open the Hollow search overlay. Pick \"Disabled\" to turn off the global hotkey.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
