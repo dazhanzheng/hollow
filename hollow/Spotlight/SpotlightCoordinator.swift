@@ -43,4 +43,32 @@ final class SpotlightCoordinator {
         results = []
         selectedIndex = 0
     }
+
+    /// Debounce window (in milliseconds) between the last keystroke and
+    /// actually invoking the searcher. 250ms is the industry-standard
+    /// "user stopped typing" threshold and is enough to coalesce rapid
+    /// typing in a Spotlight-like panel.
+    private static let debounceMs: UInt64 = 250
+
+    /// Call when the TextField's bound `query` changes.
+    func onQueryChange(_ newQuery: String) {
+        query = newQuery
+        searchTask?.cancel()
+        searchTask = nil
+        selectedIndex = 0
+
+        if newQuery.isEmpty {
+            results = []
+            return
+        }
+
+        searchTask = Task { @MainActor [searcher] in
+            try? await Task.sleep(for: .milliseconds(Self.debounceMs))
+            if Task.isCancelled { return }
+            let hits = await searcher(newQuery, 8)
+            if Task.isCancelled { return }
+            self.results = hits
+            self.selectedIndex = 0
+        }
+    }
 }
