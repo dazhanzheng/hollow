@@ -213,6 +213,9 @@
         }
       }
     },
+    "Disabled" : {
+
+    },
     "Disabled plugins are skipped during content extraction. Affected files will be marked as unsupported until you re-enable the plugin and re-extract them." : {
 
     },
@@ -649,7 +652,7 @@
     "Plugins" : {
 
     },
-    "Press this shortcut from anywhere to open the Hollow search overlay. Click the ⓧ in the recorder to disable it entirely." : {
+    "Press this shortcut from anywhere to open the Hollow search overlay. Pick \"Disabled\" to turn off the global hotkey." : {
 
     },
     "Quick Hash" : {

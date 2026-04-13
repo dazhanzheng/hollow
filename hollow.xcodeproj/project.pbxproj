@@ -19,19 +19,11 @@
 			remoteGlobalIDString = B60D10EB2F87399F00FC5B8D;
 			remoteInfo = hollow;
 		};
-		B60D11042F8739A000FC5B8D /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = B60D10E42F87399F00FC5B8D /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = B60D10EB2F87399F00FC5B8D;
-			remoteInfo = hollow;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		B60D10EC2F87399F00FC5B8D /* hollow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = hollow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B60D10F92F8739A000FC5B8D /* hollowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = hollowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		B60D11032F8739A000FC5B8D /* hollowUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = hollowUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B60D113E2F875FA300FC5B8D /* dep-lib-anstyle */ = {isa = PBXFileReference; lastKnownFileType = text; path = "dep-lib-anstyle"; sourceTree = "<group>"; };
 		B60D113F2F875FA300FC5B8D /* invoked.timestamp */ = {isa = PBXFileReference; lastKnownFileType = text; path = invoked.timestamp; sourceTree = "<group>"; };
 		B60D11402F875FA300FC5B8D /* lib-anstyle */ = {isa = PBXFileReference; lastKnownFileType = text; path = "lib-anstyle"; sourceTree = "<group>"; };
@@ -1350,17 +1342,16 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B60D10EE2F87399F00FC5B8D /* hollow */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = hollow;
 			sourceTree = "<group>";
 		};
 		B60D10FC2F8739A000FC5B8D /* hollowTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = hollowTests;
-			sourceTree = "<group>";
-		};
-		B60D11062F8739A000FC5B8D /* hollowUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = hollowUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -1382,13 +1373,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B60D11002F8739A000FC5B8D /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -1397,7 +1381,6 @@
 			children = (
 				B60D10EE2F87399F00FC5B8D /* hollow */,
 				B60D10FC2F8739A000FC5B8D /* hollowTests */,
-				B60D11062F8739A000FC5B8D /* hollowUITests */,
 				B60D113D2F875FA300FC5B8D /* Frameworks */,
 				B60D10ED2F87399F00FC5B8D /* Products */,
 			);
@@ -1408,7 +1391,6 @@
 			children = (
 				B60D10EC2F87399F00FC5B8D /* hollow.app */,
 				B60D10F92F8739A000FC5B8D /* hollowTests.xctest */,
-				B60D11032F8739A000FC5B8D /* hollowUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -3858,34 +3840,9 @@
 				B60D10FC2F8739A000FC5B8D /* hollowTests */,
 			);
 			name = hollowTests;
-			packageProductDependencies = (
-			);
 			productName = hollowTests;
 			productReference = B60D10F92F8739A000FC5B8D /* hollowTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
-		};
-		B60D11022F8739A000FC5B8D /* hollowUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = B60D11132F8739A000FC5B8D /* Build configuration list for PBXNativeTarget "hollowUITests" */;
-			buildPhases = (
-				B60D10FF2F8739A000FC5B8D /* Sources */,
-				B60D11002F8739A000FC5B8D /* Frameworks */,
-				B60D11012F8739A000FC5B8D /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				B60D11052F8739A000FC5B8D /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				B60D11062F8739A000FC5B8D /* hollowUITests */,
-			);
-			name = hollowUITests;
-			packageProductDependencies = (
-			);
-			productName = hollowUITests;
-			productReference = B60D11032F8739A000FC5B8D /* hollowUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -3901,10 +3858,6 @@
 						CreatedOnToolsVersion = 26.3;
 					};
 					B60D10F82F8739A000FC5B8D = {
-						CreatedOnToolsVersion = 26.3;
-						TestTargetID = B60D10EB2F87399F00FC5B8D;
-					};
-					B60D11022F8739A000FC5B8D = {
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = B60D10EB2F87399F00FC5B8D;
 					};
@@ -3930,7 +3883,6 @@
 			targets = (
 				B60D10EB2F87399F00FC5B8D /* hollow */,
 				B60D10F82F8739A000FC5B8D /* hollowTests */,
-				B60D11022F8739A000FC5B8D /* hollowUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -3944,13 +3896,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B60D10F72F8739A000FC5B8D /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		B60D11012F8739A000FC5B8D /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -3997,13 +3942,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B60D10FF2F8739A000FC5B8D /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -4011,11 +3949,6 @@
 			isa = PBXTargetDependency;
 			target = B60D10EB2F87399F00FC5B8D /* hollow */;
 			targetProxy = B60D10FA2F8739A000FC5B8D /* PBXContainerItemProxy */;
-		};
-		B60D11052F8739A000FC5B8D /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = B60D10EB2F87399F00FC5B8D /* hollow */;
-			targetProxy = B60D11042F8739A000FC5B8D /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -4248,42 +4181,6 @@
 			};
 			name = Release;
 		};
-		B60D11142F8739A000FC5B8D /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.syncpulse.hollowUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = hollow;
-			};
-			name = Debug;
-		};
-		B60D11152F8739A000FC5B8D /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.syncpulse.hollowUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = hollow;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -4310,15 +4207,6 @@
 			buildConfigurations = (
 				B60D11112F8739A000FC5B8D /* Debug */,
 				B60D11122F8739A000FC5B8D /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		B60D11132F8739A000FC5B8D /* Build configuration list for PBXNativeTarget "hollowUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				B60D11142F8739A000FC5B8D /* Debug */,
-				B60D11152F8739A000FC5B8D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
